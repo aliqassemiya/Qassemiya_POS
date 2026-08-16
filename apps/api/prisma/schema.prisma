@@ -1,0 +1,829 @@
+// Qassemiya POS — Phase 1 schema
+// IDs are client-generated UUIDv7 strings (no @default) so a POS-created row
+// keeps the same id from local SQLite creation through server sync.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Enums (values match packages/shared-types/src/enums.ts) ----------
+
+enum BarcodeType {
+  EAN13
+  CODE128
+  UPC_A
+  QR
+}
+
+enum StockMovementType {
+  INITIAL_STOCK
+  PURCHASE_RECEIVE
+  SALE
+  RETURN
+  ADJUSTMENT
+  TRANSFER_IN
+  TRANSFER_OUT
+  PURCHASE_RETURN
+}
+
+enum OrderStatus {
+  COMPLETED
+  VOIDED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum OrderSource {
+  POS
+  ADMIN
+  ONLINE
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum ReturnStatus {
+  COMPLETED
+  PENDING
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  SUBMITTED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+enum PurchaseInvoiceStatus {
+  PENDING
+  PARTIALLY_PAID
+  PAID
+  CANCELLED
+}
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+  COGS
+}
+
+enum NormalBalance {
+  DEBIT
+  CREDIT
+}
+
+// ---------- Auth / RBAC ----------
+
+model User {
+  id           String   @id
+  email        String   @unique
+  passwordHash String
+  fullName     String
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  employee      Employee?
+  userRoles     UserRole[]
+  refreshTokens RefreshToken[]
+
+  cashierOrders         Order[]         @relation("OrderCashier")
+  processedReturns      Return[]        @relation("ReturnProcessedBy")
+  stockMovementsCreated StockMovement[] @relation("StockMovementCreatedBy")
+
+  purchaseOrdersCreated    PurchaseOrder[]  @relation("PurchaseOrderCreatedBy")
+  goodsReceiptsReceived    GoodsReceipt[]   @relation("GoodsReceiptReceivedBy")
+  purchaseReturnsProcessed PurchaseReturn[] @relation("PurchaseReturnProcessedBy")
+
+  journalEntriesCreated JournalEntry[] @relation("JournalEntryCreatedBy")
+  expensesCreated       Expense[]      @relation("ExpenseCreatedBy")
+
+  @@map("users")
+}
+
+// Thin — sale/shift attribution only, deliberately isolated from User so
+// phase-2 HR/payroll can extend it without touching auth.
+model Employee {
+  id           String   @id
+  employeeCode String   @unique
+  fullName     String
+  pinCodeHash  String
+  branchId     String
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  userId String? @unique
+  user   User?   @relation(fields: [userId], references: [id])
+  branch Branch  @relation(fields: [branchId], references: [id])
+
+  @@index([branchId])
+  @@map("employees")
+}
+
+model Role {
+  id          String  @id
+  name        String  @unique
+  description String?
+
+  rolePermissions RolePermission[]
+  userRoles       UserRole[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String  @id
+  code        String  @unique
+  description String?
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           String @id
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// branchId = null means the grant is global (SUPER_ADMIN-style).
+model UserRole {
+  id       String  @id
+  userId   String
+  roleId   String
+  branchId String?
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role    @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  branch Branch? @relation(fields: [branchId], references: [id])
+
+  @@unique([userId, roleId, branchId])
+  @@map("user_roles")
+}
+
+// Rotated refresh tokens, hashed at rest. familyId links every token
+// descended from one login so reuse-detection can revoke the whole family.
+model RefreshToken {
+  id                String   @id
+  userId            String
+  tokenHash         String   @unique
+  familyId          String
+  deviceId          String?
+  revoked           Boolean  @default(false)
+  replacedByTokenId String?
+  expiresAt         DateTime
+  createdAt         DateTime @default(now())
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device Device? @relation(fields: [deviceId], references: [id])
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("refresh_tokens")
+}
+
+// A paired POS terminal. Refresh tokens issued for PIN logins are bound to
+// the device and stay long-lived until explicit logout.
+model Device {
+  id         String    @id
+  deviceUuid String    @unique
+  name       String
+  branchId   String
+  isActive   Boolean   @default(true)
+  pairedAt   DateTime  @default(now())
+  lastSeenAt DateTime?
+
+  branch        Branch         @relation(fields: [branchId], references: [id])
+  refreshTokens RefreshToken[]
+
+  @@index([branchId])
+  @@map("devices")
+}
+
+// ---------- Org ----------
+
+model Branch {
+  id        String   @id
+  code      String   @unique
+  name      String
+  nameAr    String?
+  address   String?
+  phone     String?
+  vatNumber String? // ZATCA hook
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employees      Employee[]
+  devices        Device[]
+  userRoles      UserRole[]
+  inventory      Inventory[]
+  stockMovements StockMovement[]
+  orders         Order[]
+  returns        Return[]
+
+  purchaseOrders  PurchaseOrder[]
+  goodsReceipts   GoodsReceipt[]
+  purchaseReturns PurchaseReturn[]
+
+  journalEntries JournalEntry[]
+  expenses       Expense[]
+
+  @@map("branches")
+}
+
+model Customer {
+  id        String   @id
+  fullName  String
+  phone     String?  @unique
+  email     String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders Order[]
+
+  @@map("customers")
+}
+
+// Vendor/supplier profile. code is the short human-facing code (e.g. "TN"),
+// numericCode the legacy numeric code from the old system (e.g. 40) — both
+// unique, both used to cross-reference the client's existing vendor list.
+model Vendor {
+  id               String   @id
+  code             String   @unique
+  numericCode      Int      @unique
+  name             String
+  nameAr           String?
+  contactName      String?
+  phone            String?
+  email            String?
+  address          String?
+  vatNumber        String?
+  paymentTermsDays Int?
+  notes            String?
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  products         Product[]
+  purchaseOrders   PurchaseOrder[]
+  purchaseInvoices PurchaseInvoice[]
+  vendorPayments   VendorPayment[]
+
+  @@map("vendors")
+}
+
+// ---------- Catalog ----------
+
+model Category {
+  id        String   @id
+  name      String
+  nameAr    String?
+  parentId  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  parent   Category?  @relation("CategoryParent", fields: [parentId], references: [id])
+  children Category[] @relation("CategoryParent")
+  products Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id               String   @id
+  name             String
+  nameAr           String?
+  description      String?
+  categoryId       String?
+  brand            String?
+  vendorId         String? // primary/sourcing vendor — product-level, not per-variant (see Vendor model comment)
+  imageUrl         String? // one image per style/product, not per-variant — these are dresses, not multi-angle-shot SKUs
+  shopifyProductId String?  @unique // phase-2 Shopify sync hook
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  category Category?        @relation(fields: [categoryId], references: [id])
+  vendor   Vendor?          @relation(fields: [vendorId], references: [id])
+  variants ProductVariant[]
+
+  @@index([categoryId])
+  @@index([vendorId])
+  @@map("products")
+}
+
+model ProductVariant {
+  id               String      @id
+  productId        String
+  sku              String      @unique
+  barcode          String?     @unique
+  barcodeType      BarcodeType @default(CODE128)
+  size             String?
+  color            String?
+  colorHex         String?
+  costPrice        Decimal     @db.Decimal(12, 2)
+  sellingPrice     Decimal     @db.Decimal(12, 2)
+  compareAtPrice   Decimal?    @db.Decimal(12, 2)
+  taxRate          Decimal     @default(15) @db.Decimal(5, 2)
+  reorderPoint     Int?
+  shopifyVariantId String?     @unique // phase-2 Shopify sync hook
+  isActive         Boolean     @default(true)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  product        Product         @relation(fields: [productId], references: [id])
+  inventory      Inventory[]
+  stockMovements StockMovement[]
+  orderItems     OrderItem[]
+
+  purchaseOrderItems PurchaseOrderItem[]
+  goodsReceiptItems  GoodsReceiptItem[]
+
+  @@index([productId])
+  @@map("product_variants")
+}
+
+// ---------- Inventory ----------
+
+// Materialized per-branch balance. Always mutated via
+// `quantityOnHand = quantityOnHand + delta` — never read-then-write —
+// and is derived from / reconciled against StockMovement.
+model Inventory {
+  id               String   @id
+  branchId         String
+  productVariantId String
+  quantityOnHand   Int      @default(0)
+  updatedAt        DateTime @updatedAt
+
+  branch         Branch         @relation(fields: [branchId], references: [id])
+  productVariant ProductVariant @relation(fields: [productVariantId], references: [id])
+
+  @@unique([branchId, productVariantId])
+  @@map("inventory")
+}
+
+// Append-only ledger. referenceType/referenceId are generic so phase-2
+// (PURCHASE_RECEIVE from a PO, TRANSFER_* between branches, etc.) needs no
+// schema rewrite.
+model StockMovement {
+  id               String            @id
+  branchId         String
+  productVariantId String
+  type             StockMovementType
+  quantityChange   Int
+  referenceType    String?
+  referenceId      String?
+  note             String?
+  createdByUserId  String?
+  createdAt        DateTime          @default(now())
+
+  branch         Branch         @relation(fields: [branchId], references: [id])
+  productVariant ProductVariant @relation(fields: [productVariantId], references: [id])
+  createdByUser  User?          @relation("StockMovementCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@index([branchId, productVariantId])
+  @@index([referenceType, referenceId])
+  @@map("stock_movements")
+}
+
+// ---------- Payments ----------
+
+// Table, not enum — so TABBY/TAMARA/GIFT_CARD can be toggled active without
+// a migration. code matches PaymentMethodCode.
+model PaymentMethod {
+  id          String  @id
+  code        String  @unique
+  name        String
+  isActive    Boolean @default(true)
+  glAccountId String? @unique // FK to Account — "what GL account does this payment method hit" (resolvePaymentAccountId)
+
+  payments        Payment[]
+  vendorPayments  VendorPayment[]
+  refundedReturns Return[]
+  glAccount       Account?        @relation(fields: [glAccountId], references: [id])
+  expenses        Expense[]
+
+  @@map("payment_methods")
+}
+
+// ---------- Sales ----------
+
+model Order {
+  id              String      @id
+  branchId        String
+  cashierUserId   String
+  customerId      String?
+  source          OrderSource @default(ADMIN)
+  status          OrderStatus @default(COMPLETED)
+  subtotal        Decimal     @db.Decimal(12, 2)
+  discountTotal   Decimal     @default(0) @db.Decimal(12, 2)
+  taxTotal        Decimal     @default(0) @db.Decimal(12, 2)
+  total           Decimal     @db.Decimal(12, 2)
+  notes           String?
+  clientCreatedAt DateTime? // when the sale actually happened on an offline POS
+  syncedAt        DateTime? // set when accepted via /sync/push; null for online-created orders
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  branch      Branch    @relation(fields: [branchId], references: [id])
+  cashierUser User      @relation("OrderCashier", fields: [cashierUserId], references: [id])
+  customer    Customer? @relation(fields: [customerId], references: [id])
+
+  items    OrderItem[]
+  payments Payment[]
+  returns  Return[]
+
+  @@index([branchId])
+  @@index([cashierUserId])
+  @@map("orders")
+}
+
+model OrderItem {
+  id                String  @id
+  orderId           String
+  productVariantId  String
+  quantity          Int
+  unitPrice         Decimal @db.Decimal(12, 2)
+  discountAmount    Decimal @default(0) @db.Decimal(12, 2)
+  taxAmount         Decimal @default(0) @db.Decimal(12, 2)
+  lineTotal         Decimal @db.Decimal(12, 2)
+  costPriceSnapshot Decimal @db.Decimal(12, 2)
+
+  order          Order          @relation(fields: [orderId], references: [id])
+  productVariant ProductVariant @relation(fields: [productVariantId], references: [id])
+  returnItems    ReturnItem[]
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+model Payment {
+  id              String        @id
+  orderId         String
+  paymentMethodId String
+  amount          Decimal       @db.Decimal(12, 2)
+  status          PaymentStatus @default(COMPLETED)
+  referenceNumber String?
+  createdAt       DateTime      @default(now())
+
+  order         Order         @relation(fields: [orderId], references: [id])
+  paymentMethod PaymentMethod @relation(fields: [paymentMethodId], references: [id])
+
+  @@index([orderId])
+  @@map("payments")
+}
+
+model Return {
+  id                    String       @id
+  orderId               String
+  branchId              String
+  processedByUserId     String
+  refundPaymentMethodId String // which method the refund went out through — mirrors Payment.paymentMethodId
+  reason                String?
+  status                ReturnStatus @default(COMPLETED)
+  totalRefundAmount     Decimal      @db.Decimal(12, 2)
+  createdAt             DateTime     @default(now())
+
+  order               Order         @relation(fields: [orderId], references: [id])
+  branch              Branch        @relation(fields: [branchId], references: [id])
+  processedByUser     User          @relation("ReturnProcessedBy", fields: [processedByUserId], references: [id])
+  refundPaymentMethod PaymentMethod @relation(fields: [refundPaymentMethodId], references: [id])
+
+  items ReturnItem[]
+
+  @@index([orderId])
+  @@index([branchId])
+  @@map("returns")
+}
+
+model ReturnItem {
+  id           String  @id
+  returnId     String
+  orderItemId  String
+  quantity     Int
+  refundAmount Decimal @db.Decimal(12, 2)
+  restocked    Boolean @default(true)
+
+  return    Return    @relation(fields: [returnId], references: [id])
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id])
+
+  @@index([returnId])
+  @@map("return_items")
+}
+
+// ---------- Purchasing ----------
+// Purchasing-side mirror of Order/OrderItem/Payment/Return/ReturnItem above.
+// All ids are server-generated (newId()) — purchasing is admin-only, never
+// created offline by POS, unlike Sales/Returns which accept client ids.
+
+model PurchaseOrder {
+  id              String              @id
+  vendorId        String
+  branchId        String // receiving branch
+  createdByUserId String?
+  status          PurchaseOrderStatus @default(DRAFT)
+  orderDate       DateTime            @default(now())
+  expectedDate    DateTime?
+  subtotal        Decimal             @db.Decimal(12, 2)
+  discountTotal   Decimal             @default(0) @db.Decimal(12, 2)
+  taxTotal        Decimal             @default(0) @db.Decimal(12, 2)
+  total           Decimal             @db.Decimal(12, 2)
+  notes           String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  vendor        Vendor @relation(fields: [vendorId], references: [id])
+  branch        Branch @relation(fields: [branchId], references: [id])
+  createdByUser User?  @relation("PurchaseOrderCreatedBy", fields: [createdByUserId], references: [id])
+
+  items            PurchaseOrderItem[]
+  goodsReceipts    GoodsReceipt[]
+  purchaseInvoices PurchaseInvoice[]
+  purchaseReturns  PurchaseReturn[]
+
+  @@index([vendorId])
+  @@index([branchId])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id               String  @id
+  purchaseOrderId  String
+  productVariantId String
+  quantityOrdered  Int
+  quantityReceived Int     @default(0) // materialized running counter — atomic increment only, never read-then-write
+  unitCost         Decimal @db.Decimal(12, 2)
+  taxAmount        Decimal @default(0) @db.Decimal(12, 2)
+  lineTotal        Decimal @db.Decimal(12, 2)
+
+  purchaseOrder       PurchaseOrder        @relation(fields: [purchaseOrderId], references: [id])
+  productVariant      ProductVariant       @relation(fields: [productVariantId], references: [id])
+  goodsReceiptItems   GoodsReceiptItem[]
+  purchaseReturnItems PurchaseReturnItem[]
+
+  @@index([purchaseOrderId])
+  @@index([productVariantId])
+  @@map("purchase_order_items")
+}
+
+// Dedicated event table (not just a StockMovement row): deliveries commonly
+// arrive in partial shipments needing their own audit trail (who/when/
+// delivery-note-ref), and received unit cost can vary from the PO's quoted
+// cost — exactly analogous to why ReturnItem exists alongside the generic
+// StockMovement ledger. applyStockMovement() (type PURCHASE_RECEIVE) remains
+// the sole ledger/inventory mutation path.
+model GoodsReceipt {
+  id               String   @id
+  purchaseOrderId  String
+  branchId         String
+  receivedByUserId String
+  deliveryNoteRef  String?
+  notes            String?
+  createdAt        DateTime @default(now())
+
+  purchaseOrder  PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  branch         Branch        @relation(fields: [branchId], references: [id])
+  receivedByUser User          @relation("GoodsReceiptReceivedBy", fields: [receivedByUserId], references: [id])
+
+  items GoodsReceiptItem[]
+
+  @@index([purchaseOrderId])
+  @@index([branchId])
+  @@map("goods_receipts")
+}
+
+model GoodsReceiptItem {
+  id                  String  @id
+  goodsReceiptId      String
+  purchaseOrderItemId String
+  productVariantId    String
+  quantity            Int
+  unitCost            Decimal @db.Decimal(12, 2)
+
+  goodsReceipt      GoodsReceipt      @relation(fields: [goodsReceiptId], references: [id])
+  purchaseOrderItem PurchaseOrderItem @relation(fields: [purchaseOrderItemId], references: [id])
+  productVariant    ProductVariant    @relation(fields: [productVariantId], references: [id])
+
+  @@index([goodsReceiptId])
+  @@map("goods_receipt_items")
+}
+
+// Vendor's own invoice document. Optionally linked to a PO (on-account
+// lump-sum invoices need not reference one). AP subledger — outstanding is
+// always computed on read (Σinvoiced − Σpaid − Σreturn credits), never a
+// stored running balance.
+model PurchaseInvoice {
+  id              String                @id
+  vendorId        String
+  purchaseOrderId String?
+  invoiceNumber   String
+  invoiceDate     DateTime              @default(now())
+  dueDate         DateTime?
+  status          PurchaseInvoiceStatus @default(PENDING)
+  subtotal        Decimal               @db.Decimal(12, 2)
+  taxTotal        Decimal               @default(0) @db.Decimal(12, 2)
+  total           Decimal               @db.Decimal(12, 2)
+  notes           String?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  vendor        Vendor          @relation(fields: [vendorId], references: [id])
+  purchaseOrder PurchaseOrder?  @relation(fields: [purchaseOrderId], references: [id])
+  payments      VendorPayment[]
+
+  @@unique([vendorId, invoiceNumber])
+  @@index([vendorId])
+  @@index([purchaseOrderId])
+  @@map("purchase_invoices")
+}
+
+// Reuses the existing PaymentMethod table (same as sales Payment).
+// purchaseInvoiceId nullable so on-account lump-sum payments are allowed.
+model VendorPayment {
+  id                String   @id
+  vendorId          String
+  purchaseInvoiceId String?
+  paymentMethodId   String
+  amount            Decimal  @db.Decimal(12, 2)
+  referenceNumber   String?
+  notes             String?
+  paidAt            DateTime @default(now())
+  createdAt         DateTime @default(now())
+
+  vendor          Vendor           @relation(fields: [vendorId], references: [id])
+  purchaseInvoice PurchaseInvoice? @relation(fields: [purchaseInvoiceId], references: [id])
+  paymentMethod   PaymentMethod    @relation(fields: [paymentMethodId], references: [id])
+
+  @@index([vendorId])
+  @@index([purchaseInvoiceId])
+  @@map("vendor_payments")
+}
+
+// Mirrors Return/ReturnItem 1:1, always tied to a purchaseOrderId /
+// purchaseOrderItemId. Creates a StockMovement(type: PURCHASE_RETURN,
+// quantityChange: negative) — stock leaves the branch back to the vendor.
+model PurchaseReturn {
+  id                String       @id
+  purchaseOrderId   String
+  branchId          String
+  processedByUserId String
+  reason            String?
+  status            ReturnStatus @default(COMPLETED)
+  totalCreditAmount Decimal      @db.Decimal(12, 2)
+  createdAt         DateTime     @default(now())
+
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  branch          Branch        @relation(fields: [branchId], references: [id])
+  processedByUser User          @relation("PurchaseReturnProcessedBy", fields: [processedByUserId], references: [id])
+
+  items PurchaseReturnItem[]
+
+  @@index([purchaseOrderId])
+  @@index([branchId])
+  @@map("purchase_returns")
+}
+
+model PurchaseReturnItem {
+  id                  String  @id
+  purchaseReturnId    String
+  purchaseOrderItemId String
+  quantity            Int
+  creditAmount        Decimal @db.Decimal(12, 2)
+
+  purchaseReturn    PurchaseReturn    @relation(fields: [purchaseReturnId], references: [id])
+  purchaseOrderItem PurchaseOrderItem @relation(fields: [purchaseOrderItemId], references: [id])
+
+  @@index([purchaseReturnId])
+  @@map("purchase_return_items")
+}
+
+// ---------- Finance & Accounting ----------
+// Double-entry ledger. Company-wide chart of accounts (no branchId on
+// Account itself — JournalEntry.branchId is the per-transaction scope).
+
+// Hierarchical, upsert-by-code seeded chart of accounts. normalBalance is
+// stored explicitly rather than derived from type because 4100 Sales
+// Returns & Allowances is type REVENUE but debit-normal (a contra account).
+// isSystem protects auto-posting-critical accounts: the update DTO simply
+// omits code/type/isSystem (same technique updatePurchaseOrderSchema uses
+// to make fields immutable), so isSystem itself is never client-settable.
+model Account {
+  id            String        @id
+  code          String        @unique
+  name          String
+  nameAr        String?
+  type          AccountType
+  normalBalance NormalBalance
+  parentId      String?
+  isSystem      Boolean       @default(false)
+  isActive      Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  parent   Account?  @relation("AccountParent", fields: [parentId], references: [id])
+  children Account[] @relation("AccountParent")
+
+  journalLines  JournalLine[]
+  paymentMethod PaymentMethod?
+  expenses      Expense[]
+
+  @@index([parentId])
+  @@map("accounts")
+}
+
+// Append-only header (mirrors StockMovement — no update/delete ever;
+// corrections happen via a new reversing entry, never editing history).
+// sourceType is a free string mirroring StockMovement.referenceType's
+// forward-compat rationale (e.g. "SALE", "SALE_VOID", "RETURN",
+// "GOODS_RECEIPT", "PURCHASE_INVOICE", "PURCHASE_INVOICE_CANCEL",
+// "VENDOR_PAYMENT", "PURCHASE_RETURN", "INVENTORY_ADJUSTMENT", "EXPENSE",
+// "MANUAL"). branchId is nullable since VendorPayment has none.
+model JournalEntry {
+  id                String   @id
+  entryDate         DateTime @default(now())
+  description       String?
+  sourceType        String
+  sourceId          String?
+  branchId          String?
+  createdByUserId   String?
+  reversalOfEntryId String?  @unique
+  createdAt         DateTime @default(now())
+
+  branch          Branch?       @relation(fields: [branchId], references: [id])
+  createdByUser   User?         @relation("JournalEntryCreatedBy", fields: [createdByUserId], references: [id])
+  reversalOfEntry JournalEntry? @relation("JournalEntryReversal", fields: [reversalOfEntryId], references: [id])
+  reversedByEntry JournalEntry? @relation("JournalEntryReversal")
+
+  lines JournalLine[]
+
+  @@index([sourceType, sourceId])
+  @@index([branchId])
+  @@map("journal_entries")
+}
+
+// Two separate Decimal debit/credit columns, not a signed amount — matches
+// how Order already uses named columns (subtotal/discountTotal/taxTotal)
+// instead of signed deltas, and is what makes Trial Balance a single
+// groupBy({_sum:{debit,credit}}) call instead of a JS-reduce fallback.
+model JournalLine {
+  id             String  @id
+  journalEntryId String
+  accountId      String
+  debit          Decimal @default(0) @db.Decimal(12, 2)
+  credit         Decimal @default(0) @db.Decimal(12, 2)
+  description    String?
+
+  journalEntry JournalEntry @relation(fields: [journalEntryId], references: [id])
+  account      Account      @relation(fields: [accountId], references: [id])
+
+  @@index([journalEntryId])
+  @@index([accountId])
+  @@map("journal_lines")
+}
+
+// Simple operating-expense record. Each Expense posts Dr categoryAccountId
+// / Cr paidByMethodId's mapped account via postJournalEntry.
+model Expense {
+  id                String   @id
+  branchId          String?
+  categoryAccountId String
+  amount            Decimal  @db.Decimal(12, 2)
+  paidByMethodId    String
+  expenseDate       DateTime @default(now())
+  description       String?
+  createdByUserId   String?
+  createdAt         DateTime @default(now())
+
+  branch          Branch?       @relation(fields: [branchId], references: [id])
+  categoryAccount Account       @relation(fields: [categoryAccountId], references: [id])
+  paidByMethod    PaymentMethod @relation(fields: [paidByMethodId], references: [id])
+  createdByUser   User?         @relation("ExpenseCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@index([branchId])
+  @@index([categoryAccountId])
+  @@map("expenses")
+}

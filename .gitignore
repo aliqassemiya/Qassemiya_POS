@@ -1,0 +1,17 @@
+node_modules/
+dist/
+out/
+build/
+.turbo/
+.env
+.env.local
+*.log
+.DS_Store
+apps/api/generated/
+apps/pos/local-data/
+*.sqlite
+*.sqlite-journal
+.vscode/*
+!.vscode/extensions.json
+electron-builder-output/
+release/

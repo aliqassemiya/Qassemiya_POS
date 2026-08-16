@@ -1,0 +1,56 @@
+import { z } from "zod";
+import { OrderSource } from "./enums";
+
+export const saleItemSchema = z.object({
+  productVariantId: z.string().uuid(),
+  quantity: z.number().int().positive(),
+  unitPrice: z.number().nonnegative(),
+  discountAmount: z.number().nonnegative().default(0),
+  taxAmount: z.number().nonnegative().default(0),
+  lineTotal: z.number().nonnegative(),
+  costPriceSnapshot: z.number().nonnegative(),
+});
+export type SaleItemInput = z.infer<typeof saleItemSchema>;
+
+export const salePaymentSchema = z.object({
+  paymentMethodId: z.string().uuid(),
+  amount: z.number().positive(),
+  referenceNumber: z.string().optional(),
+});
+export type SalePaymentInput = z.infer<typeof salePaymentSchema>;
+
+export const createSaleSchema = z.object({
+  id: z.string().uuid(),
+  branchId: z.string().uuid(),
+  cashierUserId: z.string().uuid(),
+  customerId: z.string().uuid().optional().nullable(),
+  source: z.nativeEnum(OrderSource).default(OrderSource.ADMIN),
+  items: z.array(saleItemSchema).min(1),
+  payments: z.array(salePaymentSchema).min(1),
+  subtotal: z.number().nonnegative(),
+  discountTotal: z.number().nonnegative().default(0),
+  taxTotal: z.number().nonnegative().default(0),
+  total: z.number().nonnegative(),
+  notes: z.string().optional(),
+});
+export type CreateSaleInput = z.infer<typeof createSaleSchema>;
+
+export const returnItemSchema = z.object({
+  orderItemId: z.string().uuid(),
+  quantity: z.number().int().positive(),
+  refundAmount: z.number().nonnegative(),
+  restocked: z.boolean().default(true),
+});
+export type ReturnItemInput = z.infer<typeof returnItemSchema>;
+
+export const createReturnSchema = z.object({
+  id: z.string().uuid(),
+  orderId: z.string().uuid(),
+  branchId: z.string().uuid(),
+  processedByUserId: z.string().uuid(),
+  refundPaymentMethodId: z.string().uuid(),
+  reason: z.string().optional(),
+  items: z.array(returnItemSchema).min(1),
+  totalRefundAmount: z.number().nonnegative(),
+});
+export type CreateReturnInput = z.infer<typeof createReturnSchema>;

@@ -1,0 +1,19 @@
+appId: com.qassemiya.pos
+productName: Qassemiya POS
+directories:
+  buildResources: build
+  output: release
+files:
+  - out/**/*
+  - package.json
+asarUnpack:
+  - "**/*.node"
+mac:
+  target: dmg
+  category: public.app-category.business
+win:
+  target: nsis
+linux:
+  target: AppImage
+  category: Office
+npmRebuild: true

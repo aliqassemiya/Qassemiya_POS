@@ -1,0 +1,369 @@
+:root {
+  color-scheme: light;
+  --bg: #f4f5f7;
+  --panel: #ffffff;
+  --border: #e1e4e8;
+  --text: #1f2430;
+  --text-muted: #6b7280;
+  --primary: #4f46e5;
+  --primary-hover: #4338ca;
+  --danger: #dc2626;
+  --success: #16a34a;
+  --warn: #d97706;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+#root {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+input,
+select {
+  font: inherit;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: #1f2430;
+  color: white;
+  flex-shrink: 0;
+}
+
+.app-header .left,
+.app-header .right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.nav-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: #cbd2e0;
+  padding: 6px 12px;
+  border-radius: 6px;
+}
+.nav-btn.active {
+  background: var(--primary);
+  color: white;
+}
+
+.status-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 13px;
+}
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.status-dot.online {
+  background: var(--success);
+}
+.status-dot.offline {
+  background: var(--danger);
+}
+
+.lang-switcher {
+  display: flex;
+  gap: 4px;
+}
+.lang-switcher .nav-btn {
+  padding: 6px 10px;
+}
+
+.main-content {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+}
+
+.centered-screen {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 24px;
+}
+
+.card.narrow {
+  width: 420px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+
+.field label {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.field input,
+.field select {
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.btn {
+  padding: 9px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: white;
+}
+.btn.primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: white;
+}
+.btn.primary:hover {
+  background: var(--primary-hover);
+}
+.btn.danger {
+  background: white;
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn.block {
+  width: 100%;
+}
+
+.error-text {
+  color: var(--danger);
+  font-size: 13px;
+  margin: 4px 0;
+}
+
+.pin-pad {
+  display: grid;
+  grid-template-columns: repeat(3, 64px);
+  gap: 8px;
+  justify-content: center;
+  margin: 14px 0;
+}
+.pin-pad button {
+  height: 56px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: white;
+  font-size: 20px;
+}
+.pin-dots {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin: 10px 0;
+}
+.pin-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid var(--text-muted);
+}
+.pin-dot.filled {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.till-layout {
+  display: grid;
+  grid-template-columns: 1.3fr 0.9fr;
+  gap: 16px;
+  height: 100%;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.scan-input {
+  width: 100%;
+  padding: 12px 14px;
+  font-size: 18px;
+  border: 2px solid var(--primary);
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+
+.search-results {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  max-height: 220px;
+  overflow: auto;
+  margin-bottom: 10px;
+}
+.search-result-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.search-result-row:hover {
+  background: #f2f2f7;
+}
+.result-thumb {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.result-thumb-empty {
+  background: #f2f2f7;
+}
+
+table.cart-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+table.cart-table th,
+table.cart-table td {
+  text-align: start;
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--border);
+}
+table.cart-table input.qty-input {
+  width: 52px;
+  padding: 4px;
+  text-align: center;
+}
+table.cart-table input.discount-input {
+  width: 64px;
+  padding: 4px;
+}
+
+.cart-scroll {
+  flex: 1;
+  overflow: auto;
+}
+
+.totals {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  margin-top: 10px;
+}
+.totals-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 3px 0;
+}
+.totals-row.grand {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.payment-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.payment-row select {
+  flex: 1;
+  padding: 7px;
+}
+.payment-row input {
+  width: 100px;
+  padding: 7px;
+}
+
+.badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+.badge.synced {
+  background: #dcfce7;
+  color: var(--success);
+}
+.badge.pending {
+  background: #fef3c7;
+  color: var(--warn);
+}
+
+.order-list {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: auto;
+  max-height: 100%;
+}
+.order-row {
+  padding: 10px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  cursor: pointer;
+}
+.order-row:hover {
+  background: #f2f2f7;
+}
+.order-row.selected {
+  background: #eef2ff;
+}
+
+.toast {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: #1f2430;
+  color: white;
+  padding: 12px 18px;
+  border-radius: 8px;
+  max-width: 360px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+}
+.toast.error {
+  background: var(--danger);
+}
+.toast.success {
+  background: var(--success);
+}
