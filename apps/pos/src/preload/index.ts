@@ -20,6 +20,7 @@ const api = {
     searchVariants: (query: string) => ipcRenderer.invoke(IpcChannels.SEARCH_VARIANTS, query),
     lookupBarcode: (barcode: string) => ipcRenderer.invoke(IpcChannels.LOOKUP_BARCODE, barcode),
     listPaymentMethods: () => ipcRenderer.invoke(IpcChannels.LIST_PAYMENT_METHODS),
+    listEmployees: () => ipcRenderer.invoke(IpcChannels.LIST_EMPLOYEES),
     searchCustomers: (query: string) => ipcRenderer.invoke(IpcChannels.SEARCH_CUSTOMERS, query),
     createCustomer: (req: CreateCustomerRequest) => ipcRenderer.invoke(IpcChannels.CREATE_CUSTOMER, req),
   },

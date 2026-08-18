@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { getAccountLedger } from "@/api/accounts";
 import { listBranches } from "@/api/branches";
 import { DataState } from "@/components/ui/DataState";
+import { endOfDayIso } from "@/lib/dateRange";
 
 function currency(n: number) {
   return new Intl.NumberFormat("en-SA", { style: "currency", currency: "SAR" }).format(n);
@@ -14,6 +16,7 @@ function isoDate(d: Date) {
 }
 
 export function AccountLedgerPage() {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
@@ -31,7 +34,7 @@ export function AccountLedgerPage() {
       getAccountLedger(id as string, {
         branchId: branchId || undefined,
         from: from ? new Date(from).toISOString() : undefined,
-        to: to ? new Date(to).toISOString() : undefined,
+        to: to ? endOfDayIso(to) : undefined,
       }),
     enabled: Boolean(id),
   });
@@ -43,17 +46,20 @@ export function AccountLedgerPage() {
           <div className="flex items-center justify-between">
             <div>
               <button onClick={() => navigate(-1)} className="mb-1 text-xs text-slate-500 underline">
-                ← Back
+                {t("accounts.ledger.back")}
               </button>
               <h1 className="text-2xl font-bold text-slate-900">
                 {ledgerQuery.data.account.code} — {ledgerQuery.data.account.name}
               </h1>
               <p className="text-sm text-slate-500">
-                {ledgerQuery.data.account.type} · {ledgerQuery.data.account.normalBalance}-normal
+                {t("accounts.ledger.typeAndBalance", {
+                  type: t(`accounts.types.${ledgerQuery.data.account.type}`),
+                  normalBalance: t(`accounts.normalBalances.${ledgerQuery.data.account.normalBalance}`),
+                })}
               </p>
             </div>
             <div className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-right">
-              <p className="text-xs text-slate-500">Balance</p>
+              <p className="text-xs text-slate-500">{t("accounts.ledger.balanceLabel")}</p>
               <p className="text-lg font-semibold text-slate-900">{currency(ledgerQuery.data.closingBalance)}</p>
             </div>
           </div>
@@ -64,7 +70,7 @@ export function AccountLedgerPage() {
               onChange={(e) => setBranchId(e.target.value)}
               className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
             >
-              <option value="">All branches</option>
+              <option value="">{t("common.allBranches")}</option>
               {branchesQuery.data?.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name}
@@ -72,7 +78,7 @@ export function AccountLedgerPage() {
               ))}
             </select>
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-slate-500">From</label>
+              <label className="text-xs text-slate-500">{t("common.from")}</label>
               <input
                 type="date"
                 value={from}
@@ -81,7 +87,7 @@ export function AccountLedgerPage() {
               />
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-slate-500">To</label>
+              <label className="text-xs text-slate-500">{t("common.to")}</label>
               <input
                 type="date"
                 value={to}
@@ -96,17 +102,17 @@ export function AccountLedgerPage() {
               isLoading={false}
               isError={false}
               isEmpty={ledgerQuery.data.entries.length === 0}
-              emptyMessage="No journal activity for this account in the selected range."
+              emptyMessage={t("accounts.ledger.empty")}
             >
               <table className="w-full text-left text-sm">
                 <thead className="bg-slate-50 text-slate-500">
                   <tr>
-                    <th className="px-4 py-2 font-medium">Date</th>
-                    <th className="px-4 py-2 font-medium">Description</th>
-                    <th className="px-4 py-2 font-medium">Source</th>
-                    <th className="px-4 py-2 font-medium">Debit</th>
-                    <th className="px-4 py-2 font-medium">Credit</th>
-                    <th className="px-4 py-2 font-medium">Balance</th>
+                    <th className="px-4 py-2 font-medium">{t("accounts.ledger.dateColumn")}</th>
+                    <th className="px-4 py-2 font-medium">{t("accounts.ledger.descriptionColumn")}</th>
+                    <th className="px-4 py-2 font-medium">{t("accounts.ledger.sourceColumn")}</th>
+                    <th className="px-4 py-2 font-medium">{t("accounts.ledger.debitColumn")}</th>
+                    <th className="px-4 py-2 font-medium">{t("accounts.ledger.creditColumn")}</th>
+                    <th className="px-4 py-2 font-medium">{t("accounts.ledger.balanceColumn")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">

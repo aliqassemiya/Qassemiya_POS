@@ -11,6 +11,7 @@ const SELECT = {
   userId: true,
   employeeCode: true,
   fullName: true,
+  email: true,
   branchId: true,
   isActive: true,
   createdAt: true,
@@ -40,21 +41,27 @@ export class EmployeesService {
     const existing = await this.prisma.employee.findUnique({ where: { employeeCode: dto.employeeCode } });
     if (existing) throw new ConflictException("Employee code already in use");
 
-    const pinCodeHash = await argon2.hash(dto.pinCode);
-    const userId = await this.provisionLoginUser(dto.employeeCode, dto.fullName);
+    // dto's refine() guarantees pinCode/roles are both-or-neither — no
+    // system access at all (sales-attribution only) when neither is given.
+    const grantsAccess = Boolean(dto.pinCode && dto.roles?.length);
+    const pinCodeHash = grantsAccess ? await argon2.hash(dto.pinCode!) : undefined;
+    const userId = grantsAccess ? await this.provisionLoginUser(dto.employeeCode, dto.fullName) : undefined;
 
     const employee = await this.prisma.employee.create({
       data: {
         id: newId(),
         employeeCode: dto.employeeCode,
         fullName: dto.fullName,
+        email: dto.email,
         branchId: dto.branchId,
         userId,
         pinCodeHash,
       },
     });
 
-    await this.replaceRoles(userId, dto.branchId, dto.roles);
+    if (grantsAccess) {
+      await this.replaceRoles(userId!, dto.branchId, dto.roles!);
+    }
     return this.findOne(employee.id);
   }
 
@@ -62,21 +69,34 @@ export class EmployeesService {
     const current = await this.findOne(id);
     const data: Record<string, unknown> = {};
     if (dto.fullName !== undefined) data.fullName = dto.fullName;
+    if (dto.email !== undefined) data.email = dto.email;
     if (dto.branchId !== undefined) data.branchId = dto.branchId;
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
-    if (dto.pinCode !== undefined) data.pinCodeHash = await argon2.hash(dto.pinCode);
+
+    // Upgrading a previously no-access employee to have POS login —
+    // provision the User + PIN it never had.
+    let userId = current.userId;
+    if (!userId && dto.pinCode && dto.roles?.length) {
+      userId = await this.provisionLoginUser(current.employeeCode, dto.fullName ?? current.fullName);
+      data.userId = userId;
+      data.pinCodeHash = await argon2.hash(dto.pinCode);
+    } else if (userId && dto.pinCode !== undefined) {
+      data.pinCodeHash = await argon2.hash(dto.pinCode);
+    }
+
     if (Object.keys(data).length > 0) {
       await this.prisma.employee.update({ where: { id }, data });
     }
 
-    if (dto.roles !== undefined && current.userId) {
-      await this.replaceRoles(current.userId, dto.branchId ?? current.branchId, dto.roles);
+    if (dto.roles !== undefined && userId) {
+      await this.replaceRoles(userId, dto.branchId ?? current.branchId, dto.roles);
     }
     return this.findOne(id);
   }
 
   async resetPin(id: string, dto: ResetPinDto) {
-    await this.findOne(id);
+    const current = await this.findOne(id);
+    if (!current.userId) throw new ConflictException("This employee has no system access to reset a PIN for");
     const pinCodeHash = await argon2.hash(dto.pinCode);
     await this.prisma.employee.update({ where: { id }, data: { pinCodeHash } });
     return { success: true };

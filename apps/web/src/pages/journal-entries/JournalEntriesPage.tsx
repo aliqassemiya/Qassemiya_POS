@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { z } from "zod";
 import { listAccounts } from "@/api/accounts";
 import { listBranches } from "@/api/branches";
@@ -17,6 +18,9 @@ import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/TextField";
 import { SelectField } from "@/components/ui/SelectField";
 import { useHasPermission } from "@/hooks/useHasPermission";
+import { toast } from "@/store/toastStore";
+import { getErrorMessage } from "@/lib/errorMessage";
+import { endOfDayIso } from "@/lib/dateRange";
 
 function currency(n: number) {
   return new Intl.NumberFormat("en-SA", { style: "currency", currency: "SAR" }).format(n);
@@ -30,23 +34,28 @@ function isoDate(d: Date) {
 // api/journal-entries.ts. The balance invariant (Σdebit = Σcredit) is also
 // enforced client-side here (disabling submit until balanced) as a UX
 // nicety — the API is the real source of truth and re-validates it.
-const journalLineSchema = z.object({
-  accountId: z.string().min(1, "Select an account"),
-  debit: z.coerce.number().nonnegative().default(0),
-  credit: z.coerce.number().nonnegative().default(0),
-  description: z.string().optional(),
-});
+function buildJournalEntrySchema(t: (key: string) => string) {
+  const journalLineSchema = z.object({
+    accountId: z.string().min(1, t("journalEntries.accountRequired")),
+    debit: z.coerce.number().nonnegative().default(0),
+    credit: z.coerce.number().nonnegative().default(0),
+    description: z.string().optional(),
+  });
 
-const journalEntrySchema = z.object({
-  entryDate: z.string().min(1, "Date is required"),
-  description: z.string().min(1, "Description is required"),
-  branchId: z.string().optional(),
-  lines: z.array(journalLineSchema).min(2, "Add at least two lines"),
-});
+  return z.object({
+    entryDate: z.string().min(1, t("journalEntries.dateRequired")),
+    description: z.string().min(1, t("journalEntries.descriptionRequired")),
+    branchId: z.string().optional(),
+    lines: z.array(journalLineSchema).min(2, t("journalEntries.linesMinTwo")),
+  });
+}
 
 function NewEntryForm({ onCreated }: { onCreated: () => void }) {
+  const { t } = useTranslation();
   const accountsQuery = useQuery({ queryKey: ["accounts"], queryFn: () => listAccounts() });
   const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: listBranches });
+
+  const journalEntrySchema = useMemo(() => buildJournalEntrySchema(t), [t]);
 
   const {
     register,
@@ -77,7 +86,11 @@ function NewEntryForm({ onCreated }: { onCreated: () => void }) {
 
   const createMutation = useMutation({
     mutationFn: createJournalEntry,
-    onSuccess: onCreated,
+    onSuccess: () => {
+      onCreated();
+      toast.success(t("journalEntries.posted"));
+    },
+    onError: (err) => toast.error(getErrorMessage(err, t("journalEntries.postFailedToast"))),
   });
 
   const onSubmit = (input: CreateJournalEntryInput) =>
@@ -96,9 +109,18 @@ function NewEntryForm({ onCreated }: { onCreated: () => void }) {
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-3">
-        <TextField label="Date" type="date" error={errors.entryDate} {...register("entryDate")} />
-        <SelectField label="Branch (optional)" error={errors.branchId} {...register("branchId")}>
-          <option value="">Company-wide</option>
+        <TextField
+          label={t("journalEntries.dateLabel")}
+          type="date"
+          error={errors.entryDate}
+          {...register("entryDate")}
+        />
+        <SelectField
+          label={t("journalEntries.branchOptionalLabel")}
+          error={errors.branchId}
+          {...register("branchId")}
+        >
+          <option value="">{t("journalEntries.companyWide")}</option>
           {branchesQuery.data?.map((b) => (
             <option key={b.id} value={b.id}>
               {b.name}
@@ -106,10 +128,14 @@ function NewEntryForm({ onCreated }: { onCreated: () => void }) {
           ))}
         </SelectField>
       </div>
-      <TextField label="Description" error={errors.description} {...register("description")} />
+      <TextField
+        label={t("journalEntries.descriptionLabel")}
+        error={errors.description}
+        {...register("description")}
+      />
 
       <div className="flex flex-col gap-3">
-        <h3 className="text-sm font-semibold text-slate-700">Lines</h3>
+        <h3 className="text-sm font-semibold text-slate-700">{t("journalEntries.linesLabel")}</h3>
         {errors.lines?.message && <p className="text-xs text-red-600">{errors.lines.message}</p>}
         {fields.map((field, index) => (
           <div
@@ -117,11 +143,11 @@ function NewEntryForm({ onCreated }: { onCreated: () => void }) {
             className="grid grid-cols-[1fr_6rem_6rem_auto] items-end gap-2 rounded-md border border-slate-100 p-3"
           >
             <SelectField
-              label="Account"
+              label={t("journalEntries.accountLabel")}
               error={errors.lines?.[index]?.accountId}
               {...register(`lines.${index}.accountId` as const)}
             >
-              <option value="">Select…</option>
+              <option value="">{t("journalEntries.accountSelectPlaceholder")}</option>
               {accountsQuery.data?.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.code} — {a.name}
@@ -129,14 +155,14 @@ function NewEntryForm({ onCreated }: { onCreated: () => void }) {
               ))}
             </SelectField>
             <TextField
-              label="Debit"
+              label={t("journalEntries.debitLabel")}
               type="number"
               step="0.01"
               error={errors.lines?.[index]?.debit}
               {...register(`lines.${index}.debit` as const, { valueAsNumber: true })}
             />
             <TextField
-              label="Credit"
+              label={t("journalEntries.creditLabel")}
               type="number"
               step="0.01"
               error={errors.lines?.[index]?.credit}
@@ -148,7 +174,7 @@ function NewEntryForm({ onCreated }: { onCreated: () => void }) {
               disabled={fields.length <= 2}
               onClick={() => remove(index)}
             >
-              Remove
+              {t("journalEntries.removeButton")}
             </Button>
           </div>
         ))}
@@ -157,7 +183,7 @@ function NewEntryForm({ onCreated }: { onCreated: () => void }) {
           variant="secondary"
           onClick={() => append({ accountId: "", debit: 0, credit: 0, description: "" })}
         >
-          Add line
+          {t("journalEntries.addLineButton")}
         </Button>
       </div>
 
@@ -167,22 +193,28 @@ function NewEntryForm({ onCreated }: { onCreated: () => void }) {
         }`}
       >
         <span>
-          Debit total: {currency(totalDebit)} · Credit total: {currency(totalCredit)}
+          {t("journalEntries.totalsSummary", {
+            debitTotal: currency(totalDebit),
+            creditTotal: currency(totalCredit),
+          })}
         </span>
-        <span className="font-medium">{isBalanced ? "Balanced" : "Not balanced"}</span>
+        <span className="font-medium">
+          {isBalanced ? t("journalEntries.balanced") : t("journalEntries.notBalanced")}
+        </span>
       </div>
 
       <Button type="submit" isLoading={createMutation.isPending} disabled={!isBalanced}>
-        Post entry
+        {t("journalEntries.postEntryButton")}
       </Button>
       {createMutation.isError && (
-        <p className="text-xs text-red-600">Could not post the journal entry. Please try again.</p>
+        <p className="text-xs text-red-600">{t("journalEntries.postEntryFailedInline")}</p>
       )}
     </form>
   );
 }
 
 export function JournalEntriesPage() {
+  const { t } = useTranslation();
   const canManage = useHasPermission("journal.manage");
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
@@ -203,15 +235,15 @@ export function JournalEntriesPage() {
         branchId: branchId || undefined,
         sourceType: sourceType || undefined,
         from: from ? new Date(from).toISOString() : undefined,
-        to: to ? new Date(to).toISOString() : undefined,
+        to: to ? endOfDayIso(to) : undefined,
       }),
   });
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-900">Journal entries</h1>
-        {canManage && <Button onClick={() => setModalOpen(true)}>New manual entry</Button>}
+        <h1 className="text-2xl font-bold text-slate-900">{t("journalEntries.title")}</h1>
+        {canManage && <Button onClick={() => setModalOpen(true)}>{t("journalEntries.newManualEntry")}</Button>}
       </div>
 
       <div className="flex flex-wrap items-end gap-3">
@@ -220,7 +252,7 @@ export function JournalEntriesPage() {
           onChange={(e) => setBranchId(e.target.value)}
           className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
         >
-          <option value="">All branches</option>
+          <option value="">{t("common.allBranches")}</option>
           {branchesQuery.data?.map((b) => (
             <option key={b.id} value={b.id}>
               {b.name}
@@ -230,11 +262,11 @@ export function JournalEntriesPage() {
         <input
           value={sourceType}
           onChange={(e) => setSourceType(e.target.value)}
-          placeholder="Source type (e.g. SALE, MANUAL)…"
+          placeholder={t("journalEntries.sourceTypePlaceholder")}
           className="w-56 rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
         />
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-slate-500">From</label>
+          <label className="text-xs text-slate-500">{t("common.from")}</label>
           <input
             type="date"
             value={from}
@@ -243,7 +275,7 @@ export function JournalEntriesPage() {
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-slate-500">To</label>
+          <label className="text-xs text-slate-500">{t("common.to")}</label>
           <input
             type="date"
             value={to}
@@ -259,15 +291,15 @@ export function JournalEntriesPage() {
           isError={entriesQuery.isError}
           error={entriesQuery.error}
           isEmpty={(entriesQuery.data?.length ?? 0) === 0}
-          emptyMessage="No journal entries match your filters."
+          emptyMessage={t("journalEntries.empty")}
         >
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 text-slate-500">
               <tr>
-                <th className="px-4 py-2 font-medium">Date</th>
-                <th className="px-4 py-2 font-medium">Description</th>
-                <th className="px-4 py-2 font-medium">Source</th>
-                <th className="px-4 py-2 font-medium">Total debit</th>
+                <th className="px-4 py-2 font-medium">{t("journalEntries.dateColumn")}</th>
+                <th className="px-4 py-2 font-medium">{t("journalEntries.descriptionColumn")}</th>
+                <th className="px-4 py-2 font-medium">{t("journalEntries.sourceColumn")}</th>
+                <th className="px-4 py-2 font-medium">{t("journalEntries.totalDebitColumn")}</th>
                 <th className="px-4 py-2" />
               </tr>
             </thead>
@@ -286,7 +318,7 @@ export function JournalEntriesPage() {
                   </td>
                   <td className="px-4 py-2 text-right">
                     <Link to={`/journal-entries/${entry.id}`} className="text-sm font-medium text-slate-900 underline">
-                      View
+                      {t("common.view")}
                     </Link>
                   </td>
                 </tr>
@@ -296,7 +328,7 @@ export function JournalEntriesPage() {
         </DataState>
       </div>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="New manual journal entry">
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={t("journalEntries.newEntryModalTitle")}>
         <NewEntryForm
           onCreated={() => {
             queryClient.invalidateQueries({ queryKey: ["journal-entries"] });

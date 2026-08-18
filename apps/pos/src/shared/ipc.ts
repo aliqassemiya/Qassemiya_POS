@@ -17,6 +17,7 @@ export const IpcChannels = {
   SEARCH_VARIANTS: "catalog:search-variants",
   LOOKUP_BARCODE: "catalog:lookup-barcode",
   LIST_PAYMENT_METHODS: "catalog:list-payment-methods",
+  LIST_EMPLOYEES: "catalog:list-employees",
   SEARCH_CUSTOMERS: "catalog:search-customers",
   CREATE_CUSTOMER: "catalog:create-customer",
 
@@ -59,6 +60,7 @@ export interface PinLoginRequest {
 export interface CheckoutRequest {
   branchId: string;
   cashierUserId: string;
+  soldByEmployeeId?: string | null;
   customerId?: string | null;
   customerName?: string;
   items: Array<{

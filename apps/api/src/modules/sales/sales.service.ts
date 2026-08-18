@@ -11,6 +11,9 @@ const WITH_DETAILS = {
   items: { include: { productVariant: { include: { product: true } } } },
   payments: { include: { paymentMethod: true } },
   customer: true,
+  // select, not include:true — an Employee row carries pinCodeHash, which
+  // has no business being in a sales API response even when null.
+  soldByEmployee: { select: { id: true, employeeCode: true, fullName: true } },
 } as const;
 
 @Injectable()
@@ -22,6 +25,7 @@ export class SalesService {
       where: {
         ...(query.branchId ? { branchId: query.branchId } : {}),
         ...(query.cashierUserId ? { cashierUserId: query.cashierUserId } : {}),
+        ...(query.soldByEmployeeId ? { soldByEmployeeId: query.soldByEmployeeId } : {}),
         ...(query.paymentMethodId ? { payments: { some: { paymentMethodId: query.paymentMethodId } } } : {}),
         ...(query.from || query.to
           ? { createdAt: { ...(query.from ? { gte: new Date(query.from) } : {}), ...(query.to ? { lte: new Date(query.to) } : {}) } }
@@ -36,8 +40,21 @@ export class SalesService {
 
   async findOne(id: string) {
     const order = await this.prisma.order.findUnique({ where: { id }, include: WITH_DETAILS });
-    if (!order) throw new NotFoundException("Order not found");
-    return order;
+    if (order) return order;
+
+    // Full order ids are 36-char UUIDs; the printed receipt only shows the
+    // first 8 characters (see printer-bridge.ts's `Order: ${id.slice(0,8)}`)
+    // — a cashier looking a sale up to process a return only ever has that
+    // prefix on hand, so fall back to a prefix match for anything shorter.
+    if (id.length < 36) {
+      const prefixMatch = await this.prisma.order.findFirst({
+        where: { id: { startsWith: id } },
+        include: WITH_DETAILS,
+      });
+      if (prefixMatch) return prefixMatch;
+    }
+
+    throw new NotFoundException("Order not found");
   }
 
   async create(dto: CreateSaleDto) {
@@ -56,6 +73,7 @@ export class SalesService {
           id: input.id,
           branchId: input.branchId,
           cashierUserId: input.cashierUserId,
+          soldByEmployeeId: input.soldByEmployeeId ?? undefined,
           customerId: input.customerId ?? undefined,
           source: input.source,
           subtotal: input.subtotal,
@@ -67,7 +85,7 @@ export class SalesService {
           syncedAt: clientCreatedAt ? new Date() : undefined,
           items: {
             create: input.items.map((item) => ({
-              id: newId(),
+              id: item.id,
               productVariantId: item.productVariantId,
               quantity: item.quantity,
               unitPrice: item.unitPrice,

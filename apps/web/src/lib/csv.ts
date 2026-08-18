@@ -1,8 +1,5 @@
-/**
- * Minimal CSV export — enough for phase 1 report exports. Full Excel/PDF
- * export (formatting, multi-sheet workbooks, branded PDF layouts) is a
- * later-phase concern per the plan and is intentionally not built here.
- */
+import { downloadBlob } from "./downloadBlob";
+
 export function downloadCsv(filename: string, rows: Record<string, unknown>[]): void {
   if (rows.length === 0) return;
   const headers = Object.keys(rows[0]);
@@ -11,15 +8,7 @@ export function downloadCsv(filename: string, rows: Record<string, unknown>[]): 
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   const lines = [headers.join(","), ...rows.map((row) => headers.map((h) => escape(row[h])).join(","))];
-  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  downloadBlob(filename, new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" }));
 }
 
 /**

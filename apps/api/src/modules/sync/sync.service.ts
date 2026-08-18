@@ -74,7 +74,7 @@ export class SyncService {
     const since = query.since ? new Date(query.since) : undefined;
     const updatedAt = since ? { gt: since } : undefined;
 
-    const [categories, products, inventory, paymentMethods, customers] = await Promise.all([
+    const [categories, products, inventory, paymentMethods, customers, employees] = await Promise.all([
       this.prisma.category.findMany({ where: updatedAt ? { updatedAt } : undefined }),
       this.prisma.product.findMany({
         where: updatedAt ? { OR: [{ updatedAt }, { variants: { some: { updatedAt } } }] } : undefined,
@@ -85,6 +85,12 @@ export class SyncService {
       }),
       this.prisma.paymentMethod.findMany({ where: { isActive: true } }),
       this.prisma.customer.findMany({ where: updatedAt ? { updatedAt } : undefined }),
+      // Scoped to this device's own branch — the salesperson dropdown only
+      // ever needs to offer that branch's own staff. isActive:true only:
+      // no point caching someone who can no longer be picked.
+      this.prisma.employee.findMany({
+        where: { branchId: query.branchId, isActive: true, ...(updatedAt ? { updatedAt } : {}) },
+      }),
     ]);
 
     const variants = products.flatMap((p) => p.variants);
@@ -98,6 +104,13 @@ export class SyncService {
       inventory,
       paymentMethods: paymentMethods.map((pm) => ({ ...pm, updatedAt: new Date().toISOString() })),
       customers: customers.map((c) => ({ id: c.id, name: c.fullName, phone: c.phone, email: c.email, updatedAt: c.updatedAt })),
+      employees: employees.map((e) => ({
+        id: e.id,
+        employeeCode: e.employeeCode,
+        fullName: e.fullName,
+        branchId: e.branchId,
+        updatedAt: e.updatedAt,
+      })),
     };
   }
 

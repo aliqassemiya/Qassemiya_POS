@@ -333,7 +333,6 @@ export class SyncWorker {
             sellingPrice: v.sellingPrice,
             compareAtPrice: v.compareAtPrice ?? null,
             taxRate: v.taxRate,
-            reorderPoint: v.reorderPoint ?? null,
             updatedAt: v.updatedAt,
           })
           .onConflict((oc) =>
@@ -349,13 +348,21 @@ export class SyncWorker {
               sellingPrice: v.sellingPrice,
               compareAtPrice: v.compareAtPrice ?? null,
               taxRate: v.taxRate,
-              reorderPoint: v.reorderPoint ?? null,
               updatedAt: v.updatedAt,
             }),
           )
           .execute();
       }
       for (const i of data.inventory ?? []) {
+        // Conflict target is the (branchId, productVariantId) natural key,
+        // matching the server's own @@unique — not `id`. The server only
+        // ever assigns a fresh id the first time a branch+variant pair gets
+        // an inventory row; if that row is ever deleted and recreated
+        // server-side (e.g. a manual data fix), its id changes even though
+        // the branch+variant identity doesn't — conflicting on `id` would
+        // then try to INSERT a second row for the same natural key and hit
+        // the local UNIQUE(branch_id, product_variant_id) constraint,
+        // failing (and rolling back) the entire catalog pull transaction.
         await trx
           .insertInto("inventory")
           .values({
@@ -366,7 +373,9 @@ export class SyncWorker {
             updatedAt: i.updatedAt,
           })
           .onConflict((oc) =>
-            oc.column("id").doUpdateSet({ quantityOnHand: i.quantityOnHand, updatedAt: i.updatedAt }),
+            oc
+              .columns(["branchId", "productVariantId"])
+              .doUpdateSet({ id: i.id, quantityOnHand: i.quantityOnHand, updatedAt: i.updatedAt }),
           )
           .execute();
       }
@@ -385,6 +394,15 @@ export class SyncWorker {
           .values({ id: pm.id, code: pm.code, name: pm.name, isActive: pm.isActive ? 1 : 0, updatedAt: pm.updatedAt })
           .onConflict((oc) =>
             oc.column("id").doUpdateSet({ code: pm.code, name: pm.name, isActive: pm.isActive ? 1 : 0, updatedAt: pm.updatedAt }),
+          )
+          .execute();
+      }
+      for (const e of data.employees ?? []) {
+        await trx
+          .insertInto("employee")
+          .values({ id: e.id, employeeCode: e.employeeCode, fullName: e.fullName, branchId: e.branchId, updatedAt: e.updatedAt })
+          .onConflict((oc) =>
+            oc.column("id").doUpdateSet({ employeeCode: e.employeeCode, fullName: e.fullName, branchId: e.branchId, updatedAt: e.updatedAt }),
           )
           .execute();
       }

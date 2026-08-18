@@ -6,6 +6,7 @@ import { tokenStorage } from "@/lib/tokenStorage";
 import { useAuthStore } from "@/store/authStore";
 import { ProtectedRoute } from "@/components/layout/ProtectedRoute";
 import { AppShell } from "@/components/layout/AppShell";
+import { ToastHost } from "@/components/ui/ToastHost";
 import { LoginPage } from "@/pages/LoginPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { DashboardPage } from "@/pages/dashboard/DashboardPage";
@@ -75,7 +76,9 @@ export default function App() {
   }, []);
 
   return (
-    <Routes>
+    <>
+      <ToastHost />
+      <Routes>
       <Route path="/login" element={<LoginPage />} />
 
       <Route element={<ProtectedRoute />}>
@@ -111,6 +114,7 @@ export default function App() {
       </Route>
 
       <Route path="*" element={<NotFoundPage />} />
-    </Routes>
+      </Routes>
+    </>
   );
 }

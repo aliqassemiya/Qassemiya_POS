@@ -88,7 +88,6 @@ export class ProductsService {
             sellingPrice: v.sellingPrice,
             compareAtPrice: v.compareAtPrice,
             taxRate: v.taxRate,
-            reorderPoint: v.reorderPoint,
           })),
         },
       },
@@ -122,7 +121,6 @@ export class ProductsService {
         sellingPrice: dto.sellingPrice,
         compareAtPrice: dto.compareAtPrice,
         taxRate: dto.taxRate,
-        reorderPoint: dto.reorderPoint,
       },
     });
     return this.findOne(productId);

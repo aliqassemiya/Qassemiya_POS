@@ -1,12 +1,11 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../../common/prisma/prisma.service";
-import { InventoryService } from "../inventory/inventory.service";
 import type {
   BalanceSheetQueryDto,
   CashFlowQueryDto,
-  LowStockQueryDto,
   ProfitAndLossQueryDto,
   SalesSummaryQueryDto,
+  SalesTrendQueryDto,
   TrialBalanceQueryDto,
   VatSummaryQueryDto,
   VendorBalancesQueryDto,
@@ -31,10 +30,7 @@ function dateRangeWhere(from?: string, to?: string) {
 
 @Injectable()
 export class ReportsService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly inventoryService: InventoryService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async salesSummary(query: SalesSummaryQueryDto) {
     const where = {
@@ -79,20 +75,47 @@ export class ReportsService {
     };
   }
 
-  /** Flattened to match the report's own row shape — distinct from the nested Inventory resource /inventory returns. */
-  async lowStock(query: LowStockQueryDto) {
-    const rows = await this.inventoryService.findAll({ branchId: query.branchId, lowStockOnly: true });
-    return rows.map((r) => ({
-      branchId: r.branchId,
-      branchName: r.branch?.name ?? "",
-      productVariantId: r.productVariantId,
-      sku: r.productVariant?.sku ?? "",
-      productName: r.productVariant?.product?.name ?? "",
-      size: r.productVariant?.size ?? null,
-      color: r.productVariant?.color ?? null,
-      quantityOnHand: r.quantityOnHand,
-      reorderPoint: r.productVariant?.reorderPoint ?? null,
-    }));
+  /**
+   * Daily sales totals for a dashboard trend chart — fetches raw orders in
+   * range and buckets by calendar day in JS (same "fetch rows, reduce in
+   * JS" idiom as vendorPerformance below), including zero-filled days so the
+   * chart doesn't show gaps on days with no sales. Defaults to the last 7
+   * days when no range is given.
+   */
+  async salesTrend(query: SalesTrendQueryDto) {
+    const to = query.to ? new Date(query.to) : new Date();
+    const from = query.from ? new Date(query.from) : new Date(to.getTime() - 6 * 24 * 60 * 60 * 1000);
+
+    const orders = await this.prisma.order.findMany({
+      where: {
+        ...(query.branchId ? { branchId: query.branchId } : {}),
+        createdAt: { gte: from, lte: to },
+      },
+      select: { createdAt: true, total: true },
+    });
+
+    const buckets = new Map<string, { total: number; orderCount: number }>();
+    for (const order of orders) {
+      const day = order.createdAt.toISOString().slice(0, 10);
+      const bucket = buckets.get(day) ?? { total: 0, orderCount: 0 };
+      bucket.total += Number(order.total);
+      bucket.orderCount += 1;
+      buckets.set(day, bucket);
+    }
+
+    const days: Array<{ date: string; total: number; orderCount: number }> = [];
+    const cursor = new Date(from);
+    cursor.setHours(0, 0, 0, 0);
+    const endDay = new Date(to);
+    endDay.setHours(0, 0, 0, 0);
+    while (cursor <= endDay) {
+      const key = cursor.toISOString().slice(0, 10);
+      const bucket = buckets.get(key) ?? { total: 0, orderCount: 0 };
+      days.push({ date: key, total: bucket.total, orderCount: bucket.orderCount });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    return { from: from.toISOString(), to: to.toISOString(), days };
   }
 
   /**
@@ -125,11 +148,11 @@ export class ReportsService {
 
     const byVendor = new Map<
       string,
-      { vendorId: string; vendorCode: string; vendorName: string; quantitySold: number; revenue: number; cost: number; profit: number }
+      { vendorId: string; vendorCode: string; vendorName: string; unitsSold: number; revenue: number; cost: number; profit: number }
     >();
     const byProduct = new Map<
       string,
-      { productId: string; productName: string; vendorId: string; vendorName: string; quantitySold: number; revenue: number; cost: number; profit: number }
+      { productId: string; productName: string; vendorId: string; vendorName: string; unitsSold: number; revenue: number; cost: number; profit: number }
     >();
 
     for (const item of items) {
@@ -145,12 +168,12 @@ export class ReportsService {
         vendorId: vendor.id,
         vendorCode: vendor.code,
         vendorName: vendor.name,
-        quantitySold: 0,
+        unitsSold: 0,
         revenue: 0,
         cost: 0,
         profit: 0,
       };
-      v.quantitySold += item.quantity;
+      v.unitsSold += item.quantity;
       v.revenue += revenue;
       v.cost += cost;
       v.profit += profit;
@@ -161,12 +184,12 @@ export class ReportsService {
         productName: product.name,
         vendorId: vendor.id,
         vendorName: vendor.name,
-        quantitySold: 0,
+        unitsSold: 0,
         revenue: 0,
         cost: 0,
         profit: 0,
       };
-      p.quantitySold += item.quantity;
+      p.unitsSold += item.quantity;
       p.revenue += revenue;
       p.cost += cost;
       p.profit += profit;

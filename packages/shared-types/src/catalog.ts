@@ -19,7 +19,6 @@ export const productVariantSchema = z.object({
   sellingPrice: z.number().nonnegative(),
   compareAtPrice: z.number().nonnegative().optional(),
   taxRate: z.number().min(0).max(100).default(15),
-  reorderPoint: z.number().int().nonnegative().optional(),
 });
 export type ProductVariantInput = z.infer<typeof productVariantSchema>;
 
@@ -47,7 +46,6 @@ export const variantBulkUpdateRowSchema = z.object({
   sellingPrice: z.number().nonnegative().optional(),
   compareAtPrice: z.number().nonnegative().optional(),
   taxRate: z.number().min(0).max(100).optional(),
-  reorderPoint: z.number().int().nonnegative().optional(),
 });
 export const variantBulkUpdateSchema = z.object({
   rows: z.array(variantBulkUpdateRowSchema).min(1).max(5000),

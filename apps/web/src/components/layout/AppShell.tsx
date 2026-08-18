@@ -1,12 +1,15 @@
 import { Outlet } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { Sidebar } from "./Sidebar";
 import { BranchSwitcher } from "./BranchSwitcher";
+import { LanguageSwitcher } from "./LanguageSwitcher";
 import { useAuthStore } from "@/store/authStore";
 import { tokenStorage } from "@/lib/tokenStorage";
 import { logout as logoutRequest } from "@/api/auth";
 import { Button } from "@/components/ui/Button";
 
 export function AppShell() {
+  const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
   const clearSession = useAuthStore((s) => s.clearSession);
 
@@ -30,9 +33,10 @@ export function AppShell() {
         <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3">
           <BranchSwitcher />
           <div className="flex items-center gap-3">
+            <LanguageSwitcher />
             <span className="text-sm text-slate-600">{user?.fullName}</span>
             <Button variant="secondary" onClick={handleLogout}>
-              Log out
+              {t("header.logOut")}
             </Button>
           </div>
         </header>

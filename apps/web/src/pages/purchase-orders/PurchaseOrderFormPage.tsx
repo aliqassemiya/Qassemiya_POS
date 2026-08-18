@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { z } from "zod";
 import { listBranches } from "@/api/branches";
 import { listVendors } from "@/api/vendors";
@@ -13,21 +14,25 @@ import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/TextField";
 import { SelectField } from "@/components/ui/SelectField";
 import { useAuthStore } from "@/store/authStore";
+import { toast } from "@/store/toastStore";
+import { getErrorMessage } from "@/lib/errorMessage";
 
 // No shared-types schema exists for PurchaseOrder yet — see the note atop
 // types/entities.ts / api/purchase-orders.ts.
-const purchaseOrderItemSchema = z.object({
-  productVariantId: z.string().min(1, "Select a product variant"),
-  quantityOrdered: z.coerce.number().int().positive("Quantity must be positive"),
-  unitCost: z.coerce.number().nonnegative("Cost must not be negative"),
-});
+function buildPurchaseOrderSchema(t: (key: string) => string) {
+  const purchaseOrderItemSchema = z.object({
+    productVariantId: z.string().min(1, t("purchaseOrders.form.variantRequired")),
+    quantityOrdered: z.coerce.number().int().positive(t("purchaseOrders.form.quantityPositive")),
+    unitCost: z.coerce.number().nonnegative(t("purchaseOrders.form.costNonNegative")),
+  });
 
-const purchaseOrderSchema = z.object({
-  vendorId: z.string().min(1, "Vendor is required"),
-  branchId: z.string().min(1, "Branch is required"),
-  notes: z.string().optional(),
-  items: z.array(purchaseOrderItemSchema).min(1, "Add at least one line item"),
-});
+  return z.object({
+    vendorId: z.string().min(1, t("purchaseOrders.form.vendorRequired")),
+    branchId: z.string().min(1, t("purchaseOrders.form.branchRequired")),
+    notes: z.string().optional(),
+    items: z.array(purchaseOrderItemSchema).min(1, t("purchaseOrders.form.itemsMinOne")),
+  });
+}
 
 interface LineItemMeta {
   sku: string;
@@ -35,11 +40,14 @@ interface LineItemMeta {
 }
 
 export function PurchaseOrderFormPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const activeBranchId = useAuthStore((s) => s.activeBranchId);
 
   const vendorsQuery = useQuery({ queryKey: ["vendors"], queryFn: () => listVendors() });
   const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: listBranches });
+
+  const purchaseOrderSchema = useMemo(() => buildPurchaseOrderSchema(t), [t]);
 
   const {
     register,
@@ -70,9 +78,13 @@ export function PurchaseOrderFormPage() {
     mutationFn: getVariantByBarcode,
     onSuccess: (variant, barcodeArg) => {
       append({ productVariantId: variant.id, quantityOrdered: 1, unitCost: variant.costPrice, lineTotal: variant.costPrice });
-      setItemMeta((prev) => [...prev, { sku: variant.sku, label: `Barcode ${barcodeArg}` }]);
+      setItemMeta((prev) => [
+        ...prev,
+        { sku: variant.sku, label: t("purchaseOrders.form.barcodeItemLabel", { barcode: barcodeArg }) },
+      ]);
       setBarcode("");
     },
+    onError: (err) => toast.error(getErrorMessage(err, t("purchaseOrders.form.variantNotFoundBarcode"))),
   });
 
   const addVariantRow = (variantId: string, sku: string, label: string, costPrice: number) => {
@@ -88,7 +100,11 @@ export function PurchaseOrderFormPage() {
 
   const createMutation = useMutation({
     mutationFn: createPurchaseOrder,
-    onSuccess: (po) => navigate(`/purchase-orders/${po.id}`),
+    onSuccess: (po) => {
+      navigate(`/purchase-orders/${po.id}`);
+      toast.success(t("purchaseOrders.form.created"));
+    },
+    onError: (err) => toast.error(getErrorMessage(err, t("purchaseOrders.form.createToastFailed"))),
   });
 
   // The API requires header totals (subtotal/total) and a per-item lineTotal
@@ -106,20 +122,20 @@ export function PurchaseOrderFormPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-2xl font-bold text-slate-900">New purchase order</h1>
+      <h1 className="text-2xl font-bold text-slate-900">{t("purchaseOrders.form.title")}</h1>
 
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
         <div className="grid grid-cols-1 gap-4 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-2">
-          <SelectField label="Vendor" error={errors.vendorId} {...register("vendorId")}>
-            <option value="">Select a vendor…</option>
+          <SelectField label={t("purchaseOrders.form.vendorLabel")} error={errors.vendorId} {...register("vendorId")}>
+            <option value="">{t("purchaseOrders.form.selectVendorPlaceholder")}</option>
             {vendorsQuery.data?.map((v) => (
               <option key={v.id} value={v.id}>
                 {v.code} — {v.name}
               </option>
             ))}
           </SelectField>
-          <SelectField label="Branch" error={errors.branchId} {...register("branchId")}>
-            <option value="">Select a branch…</option>
+          <SelectField label={t("purchaseOrders.form.branchLabel")} error={errors.branchId} {...register("branchId")}>
+            <option value="">{t("purchaseOrders.form.selectBranchPlaceholder")}</option>
             {branchesQuery.data?.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}
@@ -127,34 +143,34 @@ export function PurchaseOrderFormPage() {
             ))}
           </SelectField>
           <div className="sm:col-span-2">
-            <TextField label="Notes" error={errors.notes} {...register("notes")} />
+            <TextField label={t("purchaseOrders.form.notesLabel")} error={errors.notes} {...register("notes")} />
           </div>
         </div>
 
         <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <h2 className="mb-3 text-sm font-semibold text-slate-700">Add line items</h2>
+          <h2 className="mb-3 text-sm font-semibold text-slate-700">{t("purchaseOrders.form.addLineItemsTitle")}</h2>
 
           <div className="mb-4 flex flex-wrap items-end gap-3">
             <div className="flex-1 min-w-[16rem]">
               <TextField
-                label="Search by product name or SKU"
+                label={t("purchaseOrders.form.searchLabel")}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
             <div className="flex items-end gap-2">
-              <TextField label="Scan or enter barcode" value={barcode} onChange={(e) => setBarcode(e.target.value)} />
+              <TextField label={t("purchaseOrders.form.scanBarcodeLabel")} value={barcode} onChange={(e) => setBarcode(e.target.value)} />
               <Button
                 type="button"
                 variant="secondary"
                 isLoading={barcodeLookup.isPending}
                 onClick={() => barcode && barcodeLookup.mutate(barcode)}
               >
-                Add by barcode
+                {t("purchaseOrders.form.addByBarcodeButton")}
               </Button>
             </div>
           </div>
-          {barcodeLookup.isError && <p className="mb-3 text-xs text-red-600">Variant not found for that barcode.</p>}
+          {barcodeLookup.isError && <p className="mb-3 text-xs text-red-600">{t("purchaseOrders.form.variantNotFoundBarcode")}</p>}
 
           {search.length > 1 && (
             <div className="mb-4 max-h-56 overflow-y-auto rounded-md border border-slate-100">
@@ -163,7 +179,7 @@ export function PurchaseOrderFormPage() {
                 isError={searchQuery.isError}
                 error={searchQuery.error}
                 isEmpty={(searchQuery.data?.length ?? 0) === 0}
-                emptyMessage="No matching products."
+                emptyMessage={t("purchaseOrders.form.noMatchingProducts")}
               >
                 <table className="w-full text-left text-sm">
                   <tbody className="divide-y divide-slate-100">
@@ -187,7 +203,7 @@ export function PurchaseOrderFormPage() {
                                 )
                               }
                             >
-                              Add
+                              {t("purchaseOrders.form.addButton")}
                             </Button>
                           </td>
                         </tr>
@@ -208,17 +224,17 @@ export function PurchaseOrderFormPage() {
                 className="grid grid-cols-[1fr_repeat(2,7rem)_auto] items-end gap-3 rounded-md border border-slate-100 p-3"
               >
                 <div className="text-sm">
-                  <p className="font-medium text-slate-900">{itemMeta[index]?.label ?? "Item"}</p>
+                  <p className="font-medium text-slate-900">{itemMeta[index]?.label ?? t("purchaseOrders.form.defaultItemLabel")}</p>
                   <p className="font-mono text-xs text-slate-500">{itemMeta[index]?.sku}</p>
                 </div>
                 <TextField
-                  label="Qty ordered"
+                  label={t("purchaseOrders.form.qtyOrderedLabel")}
                   type="number"
                   error={errors.items?.[index]?.quantityOrdered}
                   {...register(`items.${index}.quantityOrdered` as const, { valueAsNumber: true })}
                 />
                 <TextField
-                  label="Unit cost"
+                  label={t("purchaseOrders.form.unitCostLabel")}
                   type="number"
                   step="0.01"
                   error={errors.items?.[index]?.unitCost}
@@ -226,23 +242,23 @@ export function PurchaseOrderFormPage() {
                 />
                 <input type="hidden" {...register(`items.${index}.productVariantId` as const)} />
                 <Button type="button" variant="ghost" onClick={() => removeRow(index)}>
-                  Remove
+                  {t("purchaseOrders.form.removeButton")}
                 </Button>
               </div>
             ))}
             {fields.length === 0 && (
-              <p className="text-sm text-slate-500">No line items yet — search or scan a barcode above to add one.</p>
+              <p className="text-sm text-slate-500">{t("purchaseOrders.form.noLineItemsYet")}</p>
             )}
           </div>
         </div>
 
         <div className="flex gap-3">
           <Button type="submit" isLoading={isSubmitting || createMutation.isPending}>
-            Create purchase order
+            {t("purchaseOrders.form.createPurchaseOrderButton")}
           </Button>
         </div>
         {createMutation.isError && (
-          <p className="text-xs text-red-600">Could not create the purchase order. Please try again.</p>
+          <p className="text-xs text-red-600">{t("purchaseOrders.form.createFailed")}</p>
         )}
       </form>
     </div>

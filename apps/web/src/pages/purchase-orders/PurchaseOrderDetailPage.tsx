@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import {
   cancelPurchaseOrder,
   getPurchaseOrder,
@@ -13,6 +14,8 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/TextField";
 import { useHasPermission } from "@/hooks/useHasPermission";
+import { toast } from "@/store/toastStore";
+import { getErrorMessage } from "@/lib/errorMessage";
 
 function currency(n: number) {
   return new Intl.NumberFormat("en-SA", { style: "currency", currency: "SAR" }).format(n);
@@ -48,6 +51,7 @@ function ReceiveStockForm({
   onSubmit: (input: { deliveryNoteRef?: string; items: GoodsReceiptItemInput[] }) => void;
   isPending: boolean;
 }) {
+  const { t } = useTranslation();
   const [deliveryNoteRef, setDeliveryNoteRef] = useState("");
   // Defaults each line's receive quantity to its remaining outstanding qty,
   // per the plan — the common case is receiving everything still owed.
@@ -75,7 +79,7 @@ function ReceiveStockForm({
   return (
     <div className="flex flex-col gap-4">
       <TextField
-        label="Delivery note reference (optional)"
+        label={t("purchaseOrders.detail.deliveryNoteRefLabel")}
         value={deliveryNoteRef}
         onChange={(e) => setDeliveryNoteRef(e.target.value)}
       />
@@ -83,10 +87,10 @@ function ReceiveStockForm({
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-slate-500">
             <tr>
-              <th className="px-3 py-2 font-medium">Item</th>
-              <th className="px-3 py-2 font-medium">Outstanding</th>
-              <th className="px-3 py-2 font-medium">Qty received</th>
-              <th className="px-3 py-2 font-medium">Unit cost</th>
+              <th className="px-3 py-2 font-medium">{t("purchaseOrders.detail.itemColumn")}</th>
+              <th className="px-3 py-2 font-medium">{t("purchaseOrders.detail.outstandingLabel")}</th>
+              <th className="px-3 py-2 font-medium">{t("purchaseOrders.detail.qtyReceivedLabel")}</th>
+              <th className="px-3 py-2 font-medium">{t("purchaseOrders.detail.unitCostLabel")}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -125,16 +129,17 @@ function ReceiveStockForm({
         </table>
       </div>
       {!anyOutstanding && (
-        <p className="text-xs text-slate-500">Every line on this purchase order has already been fully received.</p>
+        <p className="text-xs text-slate-500">{t("purchaseOrders.detail.allReceivedNotice")}</p>
       )}
       <Button type="button" isLoading={isPending} disabled={!branchId || !purchaseOrderId} onClick={handleSubmit}>
-        Record receipt
+        {t("purchaseOrders.detail.recordReceiptButton")}
       </Button>
     </div>
   );
 }
 
 export function PurchaseOrderDetailPage() {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -149,7 +154,9 @@ export function PurchaseOrderDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["purchase-orders"] });
       queryClient.invalidateQueries({ queryKey: ["purchase-orders", id] });
+      toast.success(t("purchaseOrders.detail.submitted"));
     },
+    onError: (err) => toast.error(getErrorMessage(err, t("purchaseOrders.detail.submitToastFailed"))),
   });
 
   const cancelMutation = useMutation({
@@ -157,7 +164,9 @@ export function PurchaseOrderDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["purchase-orders"] });
       queryClient.invalidateQueries({ queryKey: ["purchase-orders", id] });
+      toast.success(t("purchaseOrders.detail.cancelled"));
     },
+    onError: (err) => toast.error(getErrorMessage(err, t("purchaseOrders.detail.cancelToastFailed"))),
   });
 
   const receiveMutation = useMutation({
@@ -173,7 +182,9 @@ export function PurchaseOrderDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["purchase-orders", id] });
       queryClient.invalidateQueries({ queryKey: ["goods-receipts"] });
       setReceiveModalOpen(false);
+      toast.success(t("purchaseOrders.detail.receiptRecorded"));
     },
+    onError: (err) => toast.error(getErrorMessage(err, t("purchaseOrders.detail.receiptFailed"))),
   });
 
   return (
@@ -183,9 +194,11 @@ export function PurchaseOrderDetailPage() {
           <div className="flex items-center justify-between">
             <div>
               <button onClick={() => navigate(-1)} className="mb-1 text-xs text-slate-500 underline">
-                ← Back
+                {t("purchaseOrders.detail.back")}
               </button>
-              <h1 className="text-2xl font-bold text-slate-900">PO #{poQuery.data.id.slice(0, 8)}</h1>
+              <h1 className="text-2xl font-bold text-slate-900">
+                {t("purchaseOrders.detail.poTitle", { id: poQuery.data.id.slice(0, 8) })}
+              </h1>
               <p className="text-sm text-slate-500">
                 {poQuery.data.vendor?.name ?? poQuery.data.vendorId} · {poQuery.data.branch?.name ?? "—"} ·{" "}
                 {new Date(poQuery.data.createdAt).toLocaleString()}
@@ -196,7 +209,7 @@ export function PurchaseOrderDetailPage() {
                 STATUS_CLASSES[poQuery.data.status] ?? "bg-slate-100 text-slate-700"
               }`}
             >
-              {poQuery.data.status}
+              {t(`purchaseOrders.statuses.${poQuery.data.status}`)}
             </span>
           </div>
 
@@ -204,11 +217,11 @@ export function PurchaseOrderDetailPage() {
             <table className="w-full text-left text-sm">
               <thead className="bg-slate-50 text-slate-500">
                 <tr>
-                  <th className="px-4 py-2 font-medium">Item</th>
-                  <th className="px-4 py-2 font-medium">Ordered</th>
-                  <th className="px-4 py-2 font-medium">Received</th>
-                  <th className="px-4 py-2 font-medium">Outstanding</th>
-                  <th className="px-4 py-2 font-medium">Unit cost</th>
+                  <th className="px-4 py-2 font-medium">{t("purchaseOrders.detail.itemColumn")}</th>
+                  <th className="px-4 py-2 font-medium">{t("purchaseOrders.detail.orderedColumn")}</th>
+                  <th className="px-4 py-2 font-medium">{t("purchaseOrders.detail.receivedColumn")}</th>
+                  <th className="px-4 py-2 font-medium">{t("purchaseOrders.detail.outstandingColumn")}</th>
+                  <th className="px-4 py-2 font-medium">{t("purchaseOrders.detail.unitCostColumn")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -231,7 +244,7 @@ export function PurchaseOrderDetailPage() {
 
           {poQuery.data.notes && (
             <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-600">
-              <span className="font-medium text-slate-700">Notes: </span>
+              <span className="font-medium text-slate-700">{t("purchaseOrders.detail.notesLabel")}</span>
               {poQuery.data.notes}
             </div>
           )}
@@ -239,27 +252,27 @@ export function PurchaseOrderDetailPage() {
           <div className="flex flex-wrap gap-3">
             {canManage && poQuery.data.status === PurchaseOrderStatus.DRAFT && (
               <Button isLoading={submitMutation.isPending} onClick={() => submitMutation.mutate()}>
-                Submit to vendor
+                {t("purchaseOrders.detail.submitToVendorButton")}
               </Button>
             )}
             {canReceive &&
               (poQuery.data.status === PurchaseOrderStatus.SUBMITTED ||
                 poQuery.data.status === PurchaseOrderStatus.PARTIALLY_RECEIVED) && (
-                <Button onClick={() => setReceiveModalOpen(true)}>Receive stock</Button>
+                <Button onClick={() => setReceiveModalOpen(true)}>{t("purchaseOrders.detail.receiveStockButton")}</Button>
               )}
             {canManage &&
               poQuery.data.status !== PurchaseOrderStatus.CANCELLED &&
               poQuery.data.status !== PurchaseOrderStatus.RECEIVED &&
               poQuery.data.items.every((i) => i.quantityReceived === 0) && (
                 <Button variant="danger" isLoading={cancelMutation.isPending} onClick={() => cancelMutation.mutate()}>
-                  Cancel purchase order
+                  {t("purchaseOrders.detail.cancelPurchaseOrderButton")}
                 </Button>
               )}
           </div>
-          {submitMutation.isError && <p className="text-xs text-red-600">Could not submit this purchase order.</p>}
-          {cancelMutation.isError && <p className="text-xs text-red-600">Could not cancel this purchase order.</p>}
+          {submitMutation.isError && <p className="text-xs text-red-600">{t("purchaseOrders.detail.submitFailed")}</p>}
+          {cancelMutation.isError && <p className="text-xs text-red-600">{t("purchaseOrders.detail.cancelFailed")}</p>}
 
-          <Modal open={receiveModalOpen} onClose={() => setReceiveModalOpen(false)} title="Receive stock">
+          <Modal open={receiveModalOpen} onClose={() => setReceiveModalOpen(false)} title={t("purchaseOrders.detail.receiveStockModalTitle")}>
             <ReceiveStockForm
               purchaseOrderId={poQuery.data.id}
               branchId={poQuery.data.branchId}
@@ -275,7 +288,7 @@ export function PurchaseOrderDetailPage() {
               onSubmit={(input) => receiveMutation.mutate(input)}
             />
             {receiveMutation.isError && (
-              <p className="mt-3 text-xs text-red-600">Could not record the receipt. Please try again.</p>
+              <p className="mt-3 text-xs text-red-600">{t("purchaseOrders.detail.recordReceiptFailed")}</p>
             )}
           </Modal>
         </div>

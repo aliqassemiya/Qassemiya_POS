@@ -191,8 +191,8 @@ async function main() {
     { code: "1100", name: "Inventory", nameAr: "المخزون", type: AccountType.ASSET, normalBalance: NormalBalance.DEBIT, isSystem: true },
     { code: "1200", name: "VAT Receivable", nameAr: "ضريبة القيمة المضافة المستحقة القبض", type: AccountType.ASSET, normalBalance: NormalBalance.DEBIT, isSystem: true },
     { code: "2000", name: "Accounts Payable", nameAr: "ذمم دائنة", type: AccountType.LIABILITY, normalBalance: NormalBalance.CREDIT, isSystem: true },
-    { code: "2050", name: "Goods Received Not Invoiced", nameAr: "بضاعة مستلمة غير مفوترة", type: AccountType.LIABILITY, normalBalance: NormalBalance.CREDIT, isSystem: true },
-    { code: "2100", name: "VAT Payable", nameAr: "ضريبة القيمة المضافة المستحقة الدفع", type: AccountType.LIABILITY, normalBalance: NormalBalance.CREDIT, isSystem: true },
+    { code: "2050", name: "بضاعة مستلمة غير مفوترة", nameAr: "بضاعة مستلمة غير مفوترة", type: AccountType.LIABILITY, normalBalance: NormalBalance.CREDIT, isSystem: true },
+    { code: "2100", name: "ضريبة القيمة المضافة المستحقة الدفع", nameAr: "ضريبة القيمة المضافة المستحقة الدفع", type: AccountType.LIABILITY, normalBalance: NormalBalance.CREDIT, isSystem: true },
     { code: "2200", name: "Gift Card Liability", nameAr: "التزام بطاقات الهدايا", type: AccountType.LIABILITY, normalBalance: NormalBalance.CREDIT, isSystem: true },
     { code: "2300", name: "Store Credit Liability", nameAr: "التزام رصيد المتجر", type: AccountType.LIABILITY, normalBalance: NormalBalance.CREDIT, isSystem: true },
     { code: "3000", name: "Owner's Equity", nameAr: "حقوق الملكية", type: AccountType.EQUITY, normalBalance: NormalBalance.CREDIT, isSystem: true },
@@ -441,7 +441,6 @@ async function main() {
             costPrice: v.costPrice,
             sellingPrice: v.sellingPrice,
             taxRate: 15,
-            reorderPoint: 5,
           },
         }));
       variantCount++;

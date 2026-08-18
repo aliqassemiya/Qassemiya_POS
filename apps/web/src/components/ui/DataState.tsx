@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
 interface DataStateProps {
   isLoading: boolean;
@@ -9,26 +10,21 @@ interface DataStateProps {
   children: ReactNode;
 }
 
-function errorMessage(error: unknown): string {
-  if (error && typeof error === "object" && "response" in error) {
-    const response = (error as { response?: { data?: { message?: string } } }).response;
-    if (response?.data?.message) return response.data.message;
-  }
-  if (error instanceof Error) return error.message;
-  return "Something went wrong. Please try again.";
-}
-
 /** Wraps a react-query result and renders the right state — loading/error/empty/content. */
-export function DataState({
-  isLoading,
-  isError,
-  error,
-  isEmpty = false,
-  emptyMessage = "No records found.",
-  children,
-}: DataStateProps) {
+export function DataState({ isLoading, isError, error, isEmpty = false, emptyMessage, children }: DataStateProps) {
+  const { t } = useTranslation();
+
+  function errorMessage(error: unknown): string {
+    if (error && typeof error === "object" && "response" in error) {
+      const response = (error as { response?: { data?: { message?: string } } }).response;
+      if (response?.data?.message) return response.data.message;
+    }
+    if (error instanceof Error) return error.message;
+    return t("common.somethingWentWrong");
+  }
+
   if (isLoading) {
-    return <div className="p-8 text-center text-sm text-slate-500">Loading…</div>;
+    return <div className="p-8 text-center text-sm text-slate-500">{t("app.loading")}</div>;
   }
   if (isError) {
     return (
@@ -38,7 +34,7 @@ export function DataState({
     );
   }
   if (isEmpty) {
-    return <div className="p-8 text-center text-sm text-slate-500">{emptyMessage}</div>;
+    return <div className="p-8 text-center text-sm text-slate-500">{emptyMessage ?? t("common.noRecordsFound")}</div>;
   }
   return <>{children}</>;
 }

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
 interface ModalProps {
   open: boolean;
@@ -8,6 +9,7 @@ interface ModalProps {
 }
 
 export function Modal({ open, onClose, title, children }: ModalProps) {
+  const { t } = useTranslation();
   if (!open) return null;
   return (
     <div
@@ -28,7 +30,7 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
             type="button"
             onClick={onClose}
             className="text-slate-400 hover:text-slate-600"
-            aria-label="Close"
+            aria-label={t("common.close")}
           >
             ✕
           </button>

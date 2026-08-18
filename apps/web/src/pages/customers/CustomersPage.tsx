@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { z } from "zod";
 import { createCustomer, listCustomers, updateCustomer, type CustomerInput } from "@/api/customers";
 import type { Customer } from "@/types/entities";
@@ -10,15 +11,19 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/TextField";
 import { useHasPermission } from "@/hooks/useHasPermission";
+import { toast } from "@/store/toastStore";
+import { getErrorMessage } from "@/lib/errorMessage";
 
 // No shared-types schema exists for Customer yet — kept local, mirroring the
 // Customer model fields described in the plan.
-const customerSchema = z.object({
-  fullName: z.string().min(1, "Name is required"),
-  phone: z.string().min(1, "Phone number is required"),
-  email: z.string().email("Invalid email").optional().or(z.literal("")),
-  notes: z.string().optional(),
-});
+function buildCustomerSchema(t: (key: string) => string) {
+  return z.object({
+    fullName: z.string().min(1, t("customers.nameRequired")),
+    phone: z.string().min(1, t("customers.phoneRequired")),
+    email: z.string().email(t("customers.invalidEmail")).optional().or(z.literal("")),
+    notes: z.string().optional(),
+  });
+}
 
 function CustomerForm({
   initial,
@@ -29,6 +34,8 @@ function CustomerForm({
   onSubmit: (input: CustomerInput) => void;
   isPending: boolean;
 }) {
+  const { t } = useTranslation();
+  const customerSchema = useMemo(() => buildCustomerSchema(t), [t]);
   const {
     register,
     handleSubmit,
@@ -42,18 +49,19 @@ function CustomerForm({
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
-      <TextField label="Full name" error={errors.fullName} {...register("fullName")} />
-      <TextField label="Phone *" error={errors.phone} {...register("phone")} />
-      <TextField label="Email (optional)" type="email" error={errors.email} {...register("email")} />
-      <TextField label="Notes" error={errors.notes} {...register("notes")} />
+      <TextField label={t("customers.fullNameLabel")} error={errors.fullName} {...register("fullName")} />
+      <TextField label={t("customers.phoneLabel")} error={errors.phone} {...register("phone")} />
+      <TextField label={t("customers.emailLabel")} type="email" error={errors.email} {...register("email")} />
+      <TextField label={t("customers.notesLabel")} error={errors.notes} {...register("notes")} />
       <Button type="submit" isLoading={isPending}>
-        Save
+        {t("common.save")}
       </Button>
     </form>
   );
 }
 
 export function CustomersPage() {
+  const { t } = useTranslation();
   const canManage = useHasPermission("customers.manage");
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
@@ -66,7 +74,9 @@ export function CustomersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customers"] });
       setModalState({ open: false });
+      toast.success(t("customers.created"));
     },
+    onError: (err) => toast.error(getErrorMessage(err, t("customers.createFailed"))),
   });
 
   const updateMutation = useMutation({
@@ -74,20 +84,22 @@ export function CustomersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customers"] });
       setModalState({ open: false });
+      toast.success(t("customers.updated"));
     },
+    onError: (err) => toast.error(getErrorMessage(err, t("customers.updateFailed"))),
   });
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-900">Customers</h1>
-        {canManage && <Button onClick={() => setModalState({ open: true })}>New customer</Button>}
+        <h1 className="text-2xl font-bold text-slate-900">{t("customers.title")}</h1>
+        {canManage && <Button onClick={() => setModalState({ open: true })}>{t("customers.newCustomer")}</Button>}
       </div>
 
       <input
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        placeholder="Search by name, phone, or email…"
+        placeholder={t("customers.searchPlaceholder")}
         className="w-72 rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
       />
 
@@ -97,14 +109,14 @@ export function CustomersPage() {
           isError={customersQuery.isError}
           error={customersQuery.error}
           isEmpty={(customersQuery.data?.length ?? 0) === 0}
-          emptyMessage="No customers found."
+          emptyMessage={t("customers.empty")}
         >
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 text-slate-500">
               <tr>
-                <th className="px-4 py-2 font-medium">Name</th>
-                <th className="px-4 py-2 font-medium">Phone</th>
-                <th className="px-4 py-2 font-medium">Email</th>
+                <th className="px-4 py-2 font-medium">{t("common.name")}</th>
+                <th className="px-4 py-2 font-medium">{t("common.phone")}</th>
+                <th className="px-4 py-2 font-medium">{t("common.email")}</th>
                 {canManage && <th className="px-4 py-2" />}
               </tr>
             </thead>
@@ -117,7 +129,7 @@ export function CustomersPage() {
                   {canManage && (
                     <td className="px-4 py-2 text-right">
                       <Button variant="ghost" onClick={() => setModalState({ open: true, customer: c })}>
-                        Edit
+                        {t("common.edit")}
                       </Button>
                     </td>
                   )}
@@ -131,7 +143,7 @@ export function CustomersPage() {
       <Modal
         open={modalState.open}
         onClose={() => setModalState({ open: false })}
-        title={modalState.customer ? "Edit customer" : "New customer"}
+        title={modalState.customer ? t("customers.editCustomer") : t("customers.newCustomer")}
       >
         <CustomerForm
           initial={modalState.customer}

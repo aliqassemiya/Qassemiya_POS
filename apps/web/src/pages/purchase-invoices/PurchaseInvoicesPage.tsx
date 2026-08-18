@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { z } from "zod";
 import { listVendors } from "@/api/vendors";
 import { listPurchaseOrders } from "@/api/purchase-orders";
@@ -18,6 +19,8 @@ import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/TextField";
 import { SelectField } from "@/components/ui/SelectField";
 import { useHasPermission } from "@/hooks/useHasPermission";
+import { toast } from "@/store/toastStore";
+import { getErrorMessage } from "@/lib/errorMessage";
 
 function currency(n: number) {
   return new Intl.NumberFormat("en-SA", { style: "currency", currency: "SAR" }).format(n);
@@ -32,24 +35,29 @@ const STATUS_CLASSES: Record<string, string> = {
 
 // No shared-types schema exists for PurchaseInvoice yet — see the note atop
 // api/purchase-invoices.ts.
-const purchaseInvoiceSchema = z.object({
-  vendorId: z.string().min(1, "Vendor is required"),
-  purchaseOrderId: z.string().optional(),
-  invoiceNumber: z.string().min(1, "Invoice number is required"),
-  invoiceDate: z.string().min(1, "Invoice date is required"),
-  dueDate: z.string().optional(),
-  subtotal: z.coerce.number().nonnegative(),
-  taxTotal: z.coerce.number().nonnegative(),
-  total: z.coerce.number().nonnegative(),
-  notes: z.string().optional(),
-});
+function buildPurchaseInvoiceSchema(t: (key: string) => string) {
+  return z.object({
+    vendorId: z.string().min(1, t("purchaseInvoices.vendorRequired")),
+    purchaseOrderId: z.string().optional(),
+    invoiceNumber: z.string().min(1, t("purchaseInvoices.invoiceNumberRequired")),
+    invoiceDate: z.string().min(1, t("purchaseInvoices.invoiceDateRequired")),
+    dueDate: z.string().optional(),
+    subtotal: z.coerce.number().nonnegative(),
+    taxTotal: z.coerce.number().nonnegative(),
+    total: z.coerce.number().nonnegative(),
+    notes: z.string().optional(),
+  });
+}
 
 function NewInvoiceForm({ onCreated }: { onCreated: () => void }) {
+  const { t } = useTranslation();
   const vendorsQuery = useQuery({ queryKey: ["vendors"], queryFn: () => listVendors() });
   const purchaseOrdersQuery = useQuery({
     queryKey: ["purchase-orders", "for-invoice"],
     queryFn: () => listPurchaseOrders(),
   });
+
+  const purchaseInvoiceSchema = useMemo(() => buildPurchaseInvoiceSchema(t), [t]);
 
   const {
     register,
@@ -62,7 +70,11 @@ function NewInvoiceForm({ onCreated }: { onCreated: () => void }) {
 
   const createMutation = useMutation({
     mutationFn: createPurchaseInvoice,
-    onSuccess: onCreated,
+    onSuccess: () => {
+      onCreated();
+      toast.success(t("purchaseInvoices.created"));
+    },
+    onError: (err) => toast.error(getErrorMessage(err, t("purchaseInvoices.createFailed"))),
   });
 
   // The API's invoiceDate/dueDate are ISO datetime strings (z.string().datetime()),
@@ -77,62 +89,72 @@ function NewInvoiceForm({ onCreated }: { onCreated: () => void }) {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
-      <SelectField label="Vendor" error={errors.vendorId} {...register("vendorId")}>
-        <option value="">Select a vendor…</option>
+      <SelectField label={t("purchaseInvoices.vendorLabel")} error={errors.vendorId} {...register("vendorId")}>
+        <option value="">{t("purchaseInvoices.selectVendorPlaceholder")}</option>
         {vendorsQuery.data?.map((v) => (
           <option key={v.id} value={v.id}>
             {v.code} — {v.name}
           </option>
         ))}
       </SelectField>
-      <SelectField label="Purchase order (optional)" error={errors.purchaseOrderId} {...register("purchaseOrderId")}>
-        <option value="">None</option>
+      <SelectField
+        label={t("purchaseInvoices.purchaseOrderOptionalLabel")}
+        error={errors.purchaseOrderId}
+        {...register("purchaseOrderId")}
+      >
+        <option value="">{t("purchaseInvoices.noneOption")}</option>
         {purchaseOrdersQuery.data?.map((po) => (
           <option key={po.id} value={po.id}>
             PO #{po.id.slice(0, 8)} — {po.vendor?.name ?? po.vendorId}
           </option>
         ))}
       </SelectField>
-      <TextField label="Invoice number" error={errors.invoiceNumber} {...register("invoiceNumber")} />
+      <TextField label={t("purchaseInvoices.invoiceNumberLabel")} error={errors.invoiceNumber} {...register("invoiceNumber")} />
       <div className="grid grid-cols-2 gap-3">
-        <TextField label="Invoice date" type="date" error={errors.invoiceDate} {...register("invoiceDate")} />
-        <TextField label="Due date" type="date" error={errors.dueDate} {...register("dueDate")} />
+        <TextField
+          label={t("purchaseInvoices.invoiceDateLabel")}
+          type="date"
+          error={errors.invoiceDate}
+          {...register("invoiceDate")}
+        />
+        <TextField label={t("purchaseInvoices.dueDateLabel")} type="date" error={errors.dueDate} {...register("dueDate")} />
       </div>
       <div className="grid grid-cols-3 gap-3">
         <TextField
-          label="Subtotal"
+          label={t("purchaseInvoices.subtotalLabel")}
           type="number"
           step="0.01"
           error={errors.subtotal}
           {...register("subtotal", { valueAsNumber: true })}
         />
         <TextField
-          label="Tax total"
+          label={t("purchaseInvoices.taxTotalLabel")}
           type="number"
           step="0.01"
           error={errors.taxTotal}
           {...register("taxTotal", { valueAsNumber: true })}
         />
         <TextField
-          label="Total"
+          label={t("purchaseInvoices.totalLabel")}
           type="number"
           step="0.01"
           error={errors.total}
           {...register("total", { valueAsNumber: true })}
         />
       </div>
-      <TextField label="Notes" error={errors.notes} {...register("notes")} />
+      <TextField label={t("purchaseInvoices.notesLabel")} error={errors.notes} {...register("notes")} />
       <Button type="submit" isLoading={createMutation.isPending}>
-        Create invoice
+        {t("purchaseInvoices.createInvoiceButton")}
       </Button>
       {createMutation.isError && (
-        <p className="text-xs text-red-600">Could not create the invoice. Please try again.</p>
+        <p className="text-xs text-red-600">{t("purchaseInvoices.createInlineError")}</p>
       )}
     </form>
   );
 }
 
 export function PurchaseInvoicesPage() {
+  const { t } = useTranslation();
   const canManage = useHasPermission("purchases.invoice.manage");
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
@@ -152,8 +174,8 @@ export function PurchaseInvoicesPage() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-900">Purchase invoices</h1>
-        {canManage && <Button onClick={() => setModalOpen(true)}>New invoice</Button>}
+        <h1 className="text-2xl font-bold text-slate-900">{t("purchaseInvoices.title")}</h1>
+        {canManage && <Button onClick={() => setModalOpen(true)}>{t("purchaseInvoices.newInvoice")}</Button>}
       </div>
 
       <div className="flex flex-wrap gap-3">
@@ -162,7 +184,7 @@ export function PurchaseInvoicesPage() {
           onChange={(e) => setVendorId(e.target.value)}
           className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
         >
-          <option value="">All vendors</option>
+          <option value="">{t("purchaseInvoices.allVendors")}</option>
           {vendorsQuery.data?.map((v) => (
             <option key={v.id} value={v.id}>
               {v.name}
@@ -174,10 +196,10 @@ export function PurchaseInvoicesPage() {
           onChange={(e) => setStatus(e.target.value)}
           className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
         >
-          <option value="">All statuses</option>
+          <option value="">{t("purchaseInvoices.allStatuses")}</option>
           {Object.values(PurchaseInvoiceStatus).map((s) => (
             <option key={s} value={s}>
-              {s}
+              {t(`purchaseInvoices.statuses.${s}`)}
             </option>
           ))}
         </select>
@@ -189,16 +211,16 @@ export function PurchaseInvoicesPage() {
           isError={invoicesQuery.isError}
           error={invoicesQuery.error}
           isEmpty={(invoicesQuery.data?.length ?? 0) === 0}
-          emptyMessage="No purchase invoices match your filters."
+          emptyMessage={t("purchaseInvoices.empty")}
         >
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 text-slate-500">
               <tr>
-                <th className="px-4 py-2 font-medium">Invoice #</th>
-                <th className="px-4 py-2 font-medium">Vendor</th>
-                <th className="px-4 py-2 font-medium">Date</th>
-                <th className="px-4 py-2 font-medium">Total</th>
-                <th className="px-4 py-2 font-medium">Status</th>
+                <th className="px-4 py-2 font-medium">{t("purchaseInvoices.invoiceNumberColumn")}</th>
+                <th className="px-4 py-2 font-medium">{t("purchaseInvoices.vendorColumn")}</th>
+                <th className="px-4 py-2 font-medium">{t("purchaseInvoices.dateColumn")}</th>
+                <th className="px-4 py-2 font-medium">{t("purchaseInvoices.totalColumn")}</th>
+                <th className="px-4 py-2 font-medium">{t("common.status")}</th>
                 <th className="px-4 py-2" />
               </tr>
             </thead>
@@ -215,12 +237,12 @@ export function PurchaseInvoicesPage() {
                         STATUS_CLASSES[inv.status] ?? "bg-slate-100 text-slate-600"
                       }`}
                     >
-                      {inv.status}
+                      {t(`purchaseInvoices.statuses.${inv.status}`)}
                     </span>
                   </td>
                   <td className="px-4 py-2 text-right">
                     <Link to={`/purchase-invoices/${inv.id}`} className="text-sm font-medium text-slate-900 underline">
-                      View
+                      {t("common.view")}
                     </Link>
                   </td>
                 </tr>
@@ -230,7 +252,7 @@ export function PurchaseInvoicesPage() {
         </DataState>
       </div>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="New purchase invoice">
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={t("purchaseInvoices.newInvoiceModalTitle")}>
         <NewInvoiceForm
           onCreated={() => {
             queryClient.invalidateQueries({ queryKey: ["purchase-invoices"] });

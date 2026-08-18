@@ -7,6 +7,7 @@ export class CreateSaleDto extends createZodDto(createSaleSchema) {}
 export const salesListQuerySchema = z.object({
   branchId: z.string().uuid().optional(),
   cashierUserId: z.string().uuid().optional(),
+  soldByEmployeeId: z.string().uuid().optional(),
   paymentMethodId: z.string().uuid().optional(),
   from: z.string().datetime().optional(),
   to: z.string().datetime().optional(),

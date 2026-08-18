@@ -1,7 +1,7 @@
 import { ipcMain, type BrowserWindow } from "electron";
 import { IpcChannels, type AppLanguage, type CheckoutRequest, type CreateCustomerRequest, type CreateReturnRequest, type PairDeviceRequest, type PinLoginRequest } from "../../shared/ipc";
 import { pairDevice, getPairingState, pinLogin, logout, getCurrentSession, listPublicBranches, unpairDevice } from "../services/auth-service";
-import { searchVariants, lookupByBarcode, listPaymentMethods, searchCustomers, createCustomer } from "../services/catalog-service";
+import { searchVariants, lookupByBarcode, listPaymentMethods, listEmployees, searchCustomers, createCustomer } from "../services/catalog-service";
 import { createSale, listRecentOrders, getOrderWithItems, createReturn } from "../services/sales-service";
 import { printReceipt, openCashDrawer, type ReceiptData } from "../printer/printer-bridge";
 import { getMeta, setMeta, LocalMetaKey } from "../db/local-meta";
@@ -33,6 +33,8 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
   });
 
   ipcMain.handle(IpcChannels.LIST_PAYMENT_METHODS, () => listPaymentMethods());
+
+  ipcMain.handle(IpcChannels.LIST_EMPLOYEES, () => listEmployees());
 
   ipcMain.handle(IpcChannels.SEARCH_CUSTOMERS, (_e, query: string) => searchCustomers(query));
 

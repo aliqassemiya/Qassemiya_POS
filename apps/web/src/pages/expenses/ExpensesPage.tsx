@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { z } from "zod";
 import { listAccounts } from "@/api/accounts";
 import { listBranches } from "@/api/branches";
@@ -15,6 +16,9 @@ import { TextField } from "@/components/ui/TextField";
 import { SelectField } from "@/components/ui/SelectField";
 import { useHasPermission } from "@/hooks/useHasPermission";
 import { useAuthStore } from "@/store/authStore";
+import { toast } from "@/store/toastStore";
+import { getErrorMessage } from "@/lib/errorMessage";
+import { endOfDayIso } from "@/lib/dateRange";
 
 function currency(n: number) {
   return new Intl.NumberFormat("en-SA", { style: "currency", currency: "SAR" }).format(n);
@@ -26,16 +30,20 @@ function isoDate(d: Date) {
 
 // No shared-types schema exists for Expense yet — see the note atop
 // api/expenses.ts.
-const expenseSchema = z.object({
-  branchId: z.string().optional(),
-  categoryAccountId: z.string().min(1, "Category is required"),
-  amount: z.coerce.number().positive("Amount must be positive"),
-  paidByMethodId: z.string().min(1, "Payment method is required"),
-  expenseDate: z.string().min(1, "Date is required"),
-  description: z.string().optional(),
-});
+function buildExpenseSchema(t: (key: string) => string) {
+  return z.object({
+    branchId: z.string().optional(),
+    categoryAccountId: z.string().min(1, t("expenses.categoryRequired")),
+    amount: z.coerce.number().positive(t("expenses.amountPositive")),
+    paidByMethodId: z.string().min(1, t("expenses.paymentMethodRequired")),
+    expenseDate: z.string().min(1, t("expenses.dateRequired")),
+    description: z.string().optional(),
+  });
+}
 
 function NewExpenseForm({ onCreated }: { onCreated: () => void }) {
+  const { t } = useTranslation();
+  const expenseSchema = useMemo(() => buildExpenseSchema(t), [t]);
   const activeBranchId = useAuthStore((s) => s.activeBranchId);
   const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: listBranches });
   // Category accounts are chart-of-accounts rows of type EXPENSE, per the plan.
@@ -56,7 +64,11 @@ function NewExpenseForm({ onCreated }: { onCreated: () => void }) {
 
   const createMutation = useMutation({
     mutationFn: createExpense,
-    onSuccess: onCreated,
+    onSuccess: () => {
+      onCreated();
+      toast.success(t("expenses.created"));
+    },
+    onError: (err) => toast.error(getErrorMessage(err, t("expenses.createFailed"))),
   });
 
   const onSubmit = (input: ExpenseInput) =>
@@ -68,16 +80,16 @@ function NewExpenseForm({ onCreated }: { onCreated: () => void }) {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
-      <SelectField label="Branch (optional)" error={errors.branchId} {...register("branchId")}>
-        <option value="">Company-wide</option>
+      <SelectField label={t("expenses.branchOptional")} error={errors.branchId} {...register("branchId")}>
+        <option value="">{t("expenses.companyWide")}</option>
         {branchesQuery.data?.map((b) => (
           <option key={b.id} value={b.id}>
             {b.name}
           </option>
         ))}
       </SelectField>
-      <SelectField label="Expense category" error={errors.categoryAccountId} {...register("categoryAccountId")}>
-        <option value="">Select a category…</option>
+      <SelectField label={t("expenses.expenseCategoryLabel")} error={errors.categoryAccountId} {...register("categoryAccountId")}>
+        <option value="">{t("expenses.selectCategory")}</option>
         {expenseAccountsQuery.data?.map((a) => (
           <option key={a.id} value={a.id}>
             {a.code} — {a.name}
@@ -85,33 +97,34 @@ function NewExpenseForm({ onCreated }: { onCreated: () => void }) {
         ))}
       </SelectField>
       <TextField
-        label="Amount"
+        label={t("expenses.amountLabel")}
         type="number"
         step="0.01"
         error={errors.amount}
         {...register("amount", { valueAsNumber: true })}
       />
-      <SelectField label="Paid by" error={errors.paidByMethodId} {...register("paidByMethodId")}>
-        <option value="">Select a payment method…</option>
+      <SelectField label={t("expenses.paidByLabel")} error={errors.paidByMethodId} {...register("paidByMethodId")}>
+        <option value="">{t("expenses.selectPaymentMethod")}</option>
         {paymentMethodsQuery.data?.map((pm) => (
           <option key={pm.id} value={pm.id}>
             {pm.name}
           </option>
         ))}
       </SelectField>
-      <TextField label="Date" type="date" error={errors.expenseDate} {...register("expenseDate")} />
-      <TextField label="Description" error={errors.description} {...register("description")} />
+      <TextField label={t("expenses.dateLabel")} type="date" error={errors.expenseDate} {...register("expenseDate")} />
+      <TextField label={t("expenses.descriptionLabel")} error={errors.description} {...register("description")} />
       <Button type="submit" isLoading={createMutation.isPending}>
-        Record expense
+        {t("expenses.recordExpense")}
       </Button>
       {createMutation.isError && (
-        <p className="text-xs text-red-600">Could not record the expense. Please try again.</p>
+        <p className="text-xs text-red-600">{t("expenses.recordInlineError")}</p>
       )}
     </form>
   );
 }
 
 export function ExpensesPage() {
+  const { t } = useTranslation();
   const canManage = useHasPermission("expenses.manage");
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
@@ -130,15 +143,15 @@ export function ExpensesPage() {
       listExpenses({
         branchId: branchId || undefined,
         from: from ? new Date(from).toISOString() : undefined,
-        to: to ? new Date(to).toISOString() : undefined,
+        to: to ? endOfDayIso(to) : undefined,
       }),
   });
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-900">Expenses</h1>
-        {canManage && <Button onClick={() => setModalOpen(true)}>New expense</Button>}
+        <h1 className="text-2xl font-bold text-slate-900">{t("expenses.title")}</h1>
+        {canManage && <Button onClick={() => setModalOpen(true)}>{t("expenses.newExpense")}</Button>}
       </div>
 
       <div className="flex flex-wrap items-end gap-3">
@@ -147,7 +160,7 @@ export function ExpensesPage() {
           onChange={(e) => setBranchId(e.target.value)}
           className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
         >
-          <option value="">All branches</option>
+          <option value="">{t("common.allBranches")}</option>
           {branchesQuery.data?.map((b) => (
             <option key={b.id} value={b.id}>
               {b.name}
@@ -155,7 +168,7 @@ export function ExpensesPage() {
           ))}
         </select>
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-slate-500">From</label>
+          <label className="text-xs text-slate-500">{t("common.from")}</label>
           <input
             type="date"
             value={from}
@@ -164,7 +177,7 @@ export function ExpensesPage() {
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-slate-500">To</label>
+          <label className="text-xs text-slate-500">{t("common.to")}</label>
           <input
             type="date"
             value={to}
@@ -180,16 +193,16 @@ export function ExpensesPage() {
           isError={expensesQuery.isError}
           error={expensesQuery.error}
           isEmpty={(expensesQuery.data?.length ?? 0) === 0}
-          emptyMessage="No expenses match your filters."
+          emptyMessage={t("expenses.empty")}
         >
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 text-slate-500">
               <tr>
-                <th className="px-4 py-2 font-medium">Date</th>
-                <th className="px-4 py-2 font-medium">Category</th>
-                <th className="px-4 py-2 font-medium">Branch</th>
-                <th className="px-4 py-2 font-medium">Amount</th>
-                <th className="px-4 py-2 font-medium">Description</th>
+                <th className="px-4 py-2 font-medium">{t("expenses.dateColumn")}</th>
+                <th className="px-4 py-2 font-medium">{t("expenses.categoryColumn")}</th>
+                <th className="px-4 py-2 font-medium">{t("common.branch")}</th>
+                <th className="px-4 py-2 font-medium">{t("expenses.amountColumn")}</th>
+                <th className="px-4 py-2 font-medium">{t("expenses.descriptionColumn")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -199,7 +212,7 @@ export function ExpensesPage() {
                   <td className="px-4 py-2 font-medium text-slate-900">
                     {expense.categoryAccount?.name ?? expense.categoryAccountId}
                   </td>
-                  <td className="px-4 py-2 text-slate-600">{expense.branch?.name ?? "Company-wide"}</td>
+                  <td className="px-4 py-2 text-slate-600">{expense.branch?.name ?? t("expenses.companyWide")}</td>
                   <td className="px-4 py-2 font-medium text-slate-900">{currency(expense.amount)}</td>
                   <td className="px-4 py-2 text-slate-600">{expense.description ?? "—"}</td>
                 </tr>
@@ -209,7 +222,7 @@ export function ExpensesPage() {
         </DataState>
       </div>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="New expense">
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={t("expenses.newExpense")}>
         <NewExpenseForm
           onCreated={() => {
             queryClient.invalidateQueries({ queryKey: ["expenses"] });

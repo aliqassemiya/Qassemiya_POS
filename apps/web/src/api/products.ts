@@ -40,8 +40,12 @@ export async function updateVariant(
   return data;
 }
 
-export async function getVariantByBarcode(barcode: string): Promise<ProductVariant> {
-  const { data } = await apiClient.get<ProductVariant>(`/variants/barcode/${barcode}`);
+export async function getVariantByBarcode(
+  barcode: string,
+): Promise<ProductVariant & { product?: Pick<Product, "id" | "name"> }> {
+  const { data } = await apiClient.get<ProductVariant & { product?: Pick<Product, "id" | "name"> }>(
+    `/variants/barcode/${barcode}`,
+  );
   return data;
 }
 

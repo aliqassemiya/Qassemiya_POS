@@ -30,9 +30,15 @@ export interface CartCustomer {
   name: string;
 }
 
+export interface CartEmployee {
+  id: string;
+  fullName: string;
+}
+
 interface CartStore {
   items: CartItem[];
   customer: CartCustomer | null;
+  soldByEmployee: CartEmployee | null;
   payments: CartPaymentLine[];
   addItem: (item: {
     productVariantId: string;
@@ -49,6 +55,7 @@ interface CartStore {
   setDiscount: (productVariantId: string, discountAmount: number) => void;
   removeItem: (productVariantId: string) => void;
   setCustomer: (customer: CartCustomer | null) => void;
+  setSoldByEmployee: (employee: CartEmployee | null) => void;
   addPayment: (line: Omit<CartPaymentLine, "key">) => void;
   updatePayment: (key: string, amount: number, referenceNumber?: string) => void;
   removePayment: (key: string) => void;
@@ -68,6 +75,7 @@ function recompute(item: CartItem): CartItem {
 export const useCartStore = create<CartStore>((set) => ({
   items: [],
   customer: null,
+  soldByEmployee: null,
   payments: [],
 
   addItem: (input) =>
@@ -117,6 +125,8 @@ export const useCartStore = create<CartStore>((set) => ({
 
   setCustomer: (customer) => set({ customer }),
 
+  setSoldByEmployee: (soldByEmployee) => set({ soldByEmployee }),
+
   addPayment: (line) =>
     set((state) => ({ payments: [...state.payments, { ...line, key: `${Date.now()}-${Math.random()}` }] })),
 
@@ -127,7 +137,7 @@ export const useCartStore = create<CartStore>((set) => ({
 
   removePayment: (key) => set((state) => ({ payments: state.payments.filter((p) => p.key !== key) })),
 
-  clear: () => set({ items: [], customer: null, payments: [] }),
+  clear: () => set({ items: [], customer: null, soldByEmployee: null, payments: [] }),
 }));
 
 export function cartTotals(items: CartItem[]) {

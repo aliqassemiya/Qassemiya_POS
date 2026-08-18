@@ -8,10 +8,12 @@ export const salesSummaryQuerySchema = z.object({
 });
 export class SalesSummaryQueryDto extends createZodDto(salesSummaryQuerySchema) {}
 
-export const lowStockQuerySchema = z.object({
+export const salesTrendQuerySchema = z.object({
   branchId: z.string().uuid().optional(),
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
 });
-export class LowStockQueryDto extends createZodDto(lowStockQuerySchema) {}
+export class SalesTrendQueryDto extends createZodDto(salesTrendQuerySchema) {}
 
 export const vendorPerformanceQuerySchema = z.object({
   vendorId: z.string().uuid().optional(),

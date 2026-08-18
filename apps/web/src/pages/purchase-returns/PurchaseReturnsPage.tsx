@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { getPurchaseOrder } from "@/api/purchase-orders";
 import { createPurchaseReturn, listPurchaseReturns, type PurchaseReturnItemInput } from "@/api/purchase-returns";
 import type { PurchaseOrder } from "@/types/entities";
@@ -9,12 +10,16 @@ import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/TextField";
 import { useAuthStore } from "@/store/authStore";
 import { useHasPermission } from "@/hooks/useHasPermission";
+import { toast } from "@/store/toastStore";
+import { getErrorMessage } from "@/lib/errorMessage";
+import { randomUUID } from "@/lib/uuid";
 
 function currency(n: number) {
   return new Intl.NumberFormat("en-SA", { style: "currency", currency: "SAR" }).format(n);
 }
 
 function NewPurchaseReturnForm({ onCreated }: { onCreated: () => void }) {
+  const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
   const [purchaseOrderId, setPurchaseOrderId] = useState("");
   const [po, setPo] = useState<PurchaseOrder | null>(null);
@@ -27,11 +32,16 @@ function NewPurchaseReturnForm({ onCreated }: { onCreated: () => void }) {
       setPo(data);
       setSelected({});
     },
+    onError: (err) => toast.error(getErrorMessage(err, t("purchaseReturns.form.poNotFoundError"))),
   });
 
   const createReturnMutation = useMutation({
     mutationFn: createPurchaseReturn,
-    onSuccess: onCreated,
+    onSuccess: () => {
+      onCreated();
+      toast.success(t("purchaseReturns.created"));
+    },
+    onError: (err) => toast.error(getErrorMessage(err, t("purchaseReturns.createFailed"))),
   });
 
   // Only items that have actually been received can be returned to the
@@ -59,9 +69,9 @@ function NewPurchaseReturnForm({ onCreated }: { onCreated: () => void }) {
     }));
     createReturnMutation.mutate({
       // Client-generated id, same convention ReturnsPage uses for its
-      // sales-side return (crypto.randomUUID() stand-in for offline-sync
+      // sales-side return (randomUUID() stand-in for offline-sync
       // idempotency, which doesn't apply to this admin-only web flow).
-      id: crypto.randomUUID(),
+      id: randomUUID(),
       purchaseOrderId: po.id,
       branchId: po.branchId,
       processedByUserId: user.id,
@@ -74,17 +84,21 @@ function NewPurchaseReturnForm({ onCreated }: { onCreated: () => void }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-end gap-2">
-        <TextField label="Purchase order ID" value={purchaseOrderId} onChange={(e) => setPurchaseOrderId(e.target.value)} />
+        <TextField
+          label={t("purchaseReturns.form.purchaseOrderIdLabel")}
+          value={purchaseOrderId}
+          onChange={(e) => setPurchaseOrderId(e.target.value)}
+        />
         <Button
           type="button"
           variant="secondary"
           isLoading={loadPoMutation.isPending}
           onClick={() => purchaseOrderId && loadPoMutation.mutate()}
         >
-          Load PO
+          {t("purchaseReturns.form.loadPoButton")}
         </Button>
       </div>
-      {loadPoMutation.isError && <p className="text-xs text-red-600">Purchase order not found.</p>}
+      {loadPoMutation.isError && <p className="text-xs text-red-600">{t("purchaseReturns.form.poNotFoundError")}</p>}
 
       {po && (
         <>
@@ -96,9 +110,9 @@ function NewPurchaseReturnForm({ onCreated }: { onCreated: () => void }) {
               <thead className="bg-slate-50 text-slate-500">
                 <tr>
                   <th className="px-3 py-2" />
-                  <th className="px-3 py-2 font-medium">Item</th>
-                  <th className="px-3 py-2 font-medium">Qty received</th>
-                  <th className="px-3 py-2 font-medium">Credit</th>
+                  <th className="px-3 py-2 font-medium">{t("purchaseReturns.form.itemColumn")}</th>
+                  <th className="px-3 py-2 font-medium">{t("purchaseReturns.form.qtyReceivedColumn")}</th>
+                  <th className="px-3 py-2 font-medium">{t("purchaseReturns.form.creditColumn")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -121,16 +135,14 @@ function NewPurchaseReturnForm({ onCreated }: { onCreated: () => void }) {
               </tbody>
             </table>
             {po.items.every((item) => item.quantityReceived === 0) && (
-              <p className="p-3 text-sm text-slate-500">
-                Nothing has been received against this purchase order yet, so there is nothing to return.
-              </p>
+              <p className="p-3 text-sm text-slate-500">{t("purchaseReturns.form.nothingReceivedNotice")}</p>
             )}
           </div>
 
-          <TextField label="Reason" value={reason} onChange={(e) => setReason(e.target.value)} />
+          <TextField label={t("purchaseReturns.form.reasonLabel")} value={reason} onChange={(e) => setReason(e.target.value)} />
 
           <div className="flex items-center justify-between text-sm font-medium">
-            <span>Total credit</span>
+            <span>{t("purchaseReturns.form.totalCreditLabel")}</span>
             <span>{currency(totalCreditAmount)}</span>
           </div>
 
@@ -140,10 +152,10 @@ function NewPurchaseReturnForm({ onCreated }: { onCreated: () => void }) {
             disabled={Object.keys(selected).length === 0}
             onClick={handleSubmit}
           >
-            Create purchase return
+            {t("purchaseReturns.form.createButton")}
           </Button>
           {createReturnMutation.isError && (
-            <p className="text-xs text-red-600">Could not create the purchase return. Please try again.</p>
+            <p className="text-xs text-red-600">{t("purchaseReturns.form.createInlineError")}</p>
           )}
         </>
       )}
@@ -152,6 +164,7 @@ function NewPurchaseReturnForm({ onCreated }: { onCreated: () => void }) {
 }
 
 export function PurchaseReturnsPage() {
+  const { t } = useTranslation();
   const canCreate = useHasPermission("purchases.return.create");
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
@@ -161,8 +174,8 @@ export function PurchaseReturnsPage() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-900">Purchase returns</h1>
-        {canCreate && <Button onClick={() => setModalOpen(true)}>New purchase return</Button>}
+        <h1 className="text-2xl font-bold text-slate-900">{t("purchaseReturns.title")}</h1>
+        {canCreate && <Button onClick={() => setModalOpen(true)}>{t("purchaseReturns.newPurchaseReturn")}</Button>}
       </div>
 
       <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
@@ -171,16 +184,16 @@ export function PurchaseReturnsPage() {
           isError={returnsQuery.isError}
           error={returnsQuery.error}
           isEmpty={(returnsQuery.data?.length ?? 0) === 0}
-          emptyMessage="No purchase returns recorded yet."
+          emptyMessage={t("purchaseReturns.empty")}
         >
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 text-slate-500">
               <tr>
-                <th className="px-4 py-2 font-medium">Date</th>
-                <th className="px-4 py-2 font-medium">Purchase order</th>
-                <th className="px-4 py-2 font-medium">Reason</th>
-                <th className="px-4 py-2 font-medium">Credit amount</th>
-                <th className="px-4 py-2 font-medium">Status</th>
+                <th className="px-4 py-2 font-medium">{t("purchaseReturns.dateColumn")}</th>
+                <th className="px-4 py-2 font-medium">{t("purchaseReturns.purchaseOrderColumn")}</th>
+                <th className="px-4 py-2 font-medium">{t("purchaseReturns.reasonColumn")}</th>
+                <th className="px-4 py-2 font-medium">{t("purchaseReturns.creditAmountColumn")}</th>
+                <th className="px-4 py-2 font-medium">{t("common.status")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -190,7 +203,7 @@ export function PurchaseReturnsPage() {
                   <td className="px-4 py-2 text-slate-600">{r.purchaseOrderId.slice(0, 8)}</td>
                   <td className="px-4 py-2 text-slate-600">{r.reason ?? "—"}</td>
                   <td className="px-4 py-2 font-medium text-slate-900">{currency(r.totalCreditAmount)}</td>
-                  <td className="px-4 py-2 text-slate-600">{r.status}</td>
+                  <td className="px-4 py-2 text-slate-600">{t(`purchaseReturns.statuses.${r.status}`)}</td>
                 </tr>
               ))}
             </tbody>
@@ -198,7 +211,7 @@ export function PurchaseReturnsPage() {
         </DataState>
       </div>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="New purchase return">
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={t("purchaseReturns.newPurchaseReturn")}>
         <NewPurchaseReturnForm
           onCreated={() => {
             queryClient.invalidateQueries({ queryKey: ["purchase-returns"] });

@@ -1,12 +1,13 @@
 import { z } from "zod";
 import { createZodDto } from "nestjs-zod";
-import { stockAdjustSchema } from "@qassemiya/shared-types";
+import { inventoryBulkAdjustSchema, stockAdjustSchema, stockTransferSchema } from "@qassemiya/shared-types";
 
 export class StockAdjustDto extends createZodDto(stockAdjustSchema) {}
+export class StockTransferDto extends createZodDto(stockTransferSchema) {}
+export class InventoryBulkAdjustDto extends createZodDto(inventoryBulkAdjustSchema) {}
 
 export const inventoryListQuerySchema = z.object({
   branchId: z.string().uuid().optional(),
-  lowStockOnly: z.coerce.boolean().optional(),
 });
 export class InventoryListQueryDto extends createZodDto(inventoryListQuerySchema) {}
 

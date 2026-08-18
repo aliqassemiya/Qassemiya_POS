@@ -3,9 +3,9 @@ import { ReportsService } from "./reports.service";
 import {
   BalanceSheetQueryDto,
   CashFlowQueryDto,
-  LowStockQueryDto,
   ProfitAndLossQueryDto,
   SalesSummaryQueryDto,
+  SalesTrendQueryDto,
   TrialBalanceQueryDto,
   VatSummaryQueryDto,
   VendorBalancesQueryDto,
@@ -25,9 +25,9 @@ export class ReportsController {
     return this.reportsService.salesSummary(query);
   }
 
-  @Get("low-stock")
-  lowStock(@Query() query: LowStockQueryDto) {
-    return this.reportsService.lowStock(query);
+  @Get("sales-trend")
+  salesTrend(@Query() query: SalesTrendQueryDto) {
+    return this.reportsService.salesTrend(query);
   }
 
   @Get("vendor-performance")

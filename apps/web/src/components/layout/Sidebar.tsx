@@ -1,10 +1,12 @@
 import { NavLink } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import type { Permission } from "@qassemiya/shared-types";
 import { useAuthStore } from "@/store/authStore";
+import type { TranslationResource } from "@/i18n/en";
 
 interface NavItem {
   to: string;
-  label: string;
+  labelKey: keyof TranslationResource["nav"];
   /**
    * Shown if the user has ANY of these permissions; omit to always show.
    * Widened to accept forward-compat permission strings not yet in
@@ -16,23 +18,23 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { to: "/dashboard", label: "Dashboard" },
-  { to: "/branches", label: "Branches", anyOf: ["branches.manage"] },
-  { to: "/products", label: "Products", anyOf: ["catalog.manage", "inventory.view"] },
-  { to: "/inventory", label: "Inventory", anyOf: ["inventory.view", "inventory.adjust"] },
-  { to: "/sales", label: "Sales", anyOf: ["pos.sale.create", "pos.sale.void", "reports.view"] },
-  { to: "/returns", label: "Returns", anyOf: ["pos.return.create", "reports.view"] },
-  { to: "/customers", label: "Customers", anyOf: ["customers.manage"] },
-  { to: "/employees", label: "Employees", anyOf: ["employees.manage"] },
-  { to: "/vendors", label: "Vendors", anyOf: ["vendors.manage"] },
+  { to: "/dashboard", labelKey: "dashboard" },
+  { to: "/branches", labelKey: "branches", anyOf: ["branches.manage"] },
+  { to: "/products", labelKey: "products", anyOf: ["catalog.manage", "inventory.view"] },
+  { to: "/inventory", labelKey: "inventory", anyOf: ["inventory.view", "inventory.adjust"] },
+  { to: "/sales", labelKey: "sales", anyOf: ["pos.sale.create", "pos.sale.void", "reports.view"] },
+  { to: "/returns", labelKey: "returns", anyOf: ["pos.return.create", "reports.view"] },
+  { to: "/customers", labelKey: "customers", anyOf: ["customers.manage"] },
+  { to: "/employees", labelKey: "employees", anyOf: ["employees.manage"] },
+  { to: "/vendors", labelKey: "vendors", anyOf: ["vendors.manage"] },
   {
     to: "/purchase-orders",
-    label: "Purchase orders",
+    labelKey: "purchaseOrders",
     anyOf: ["purchases.po.manage", "purchases.receive"],
   },
-  { to: "/purchase-invoices", label: "Purchase invoices", anyOf: ["purchases.invoice.manage"] },
-  { to: "/purchase-returns", label: "Purchase returns", anyOf: ["purchases.return.create"] },
-  { to: "/reports", label: "Reports", anyOf: ["reports.view"] },
+  { to: "/purchase-invoices", labelKey: "purchaseInvoices", anyOf: ["purchases.invoice.manage"] },
+  { to: "/purchase-returns", labelKey: "purchaseReturns", anyOf: ["purchases.return.create"] },
+  { to: "/reports", labelKey: "reports", anyOf: ["reports.view"] },
 ];
 
 // Finance & Accounting (spicy-kindling-puffin.md) — a separate nav section
@@ -41,10 +43,10 @@ const NAV_ITEMS: NavItem[] = [
 // @qassemiya/shared-types' PERMISSIONS/Permission union (the parallel apps/api
 // build owns that file) — see the NavItem.anyOf widened type note below.
 const FINANCE_NAV_ITEMS: NavItem[] = [
-  { to: "/accounts", label: "Chart of accounts", anyOf: ["accounts.manage"] },
-  { to: "/journal-entries", label: "Journal entries", anyOf: ["journal.manage", "reports.financial.view"] },
-  { to: "/expenses", label: "Expenses", anyOf: ["expenses.manage"] },
-  { to: "/reports/financial", label: "Finance reports", anyOf: ["reports.financial.view"] },
+  { to: "/accounts", labelKey: "accounts", anyOf: ["accounts.manage"] },
+  { to: "/journal-entries", labelKey: "journalEntries", anyOf: ["journal.manage", "reports.financial.view"] },
+  { to: "/expenses", labelKey: "expenses", anyOf: ["expenses.manage"] },
+  { to: "/reports/financial", labelKey: "financeReports", anyOf: ["reports.financial.view"] },
 ];
 
 const linkClasses = ({ isActive }: { isActive: boolean }) =>
@@ -53,6 +55,7 @@ const linkClasses = ({ isActive }: { isActive: boolean }) =>
   }`;
 
 export function Sidebar() {
+  const { t } = useTranslation();
   const permissions = useAuthStore((s) => s.user?.permissions ?? []);
 
   const visibleItems = NAV_ITEMS.filter(
@@ -64,20 +67,20 @@ export function Sidebar() {
 
   return (
     <nav className="flex w-56 shrink-0 flex-col gap-1 border-r border-slate-200 bg-white p-4">
-      <div className="mb-4 px-2 text-lg font-bold text-slate-900">Qassemiya</div>
+      <div className="mb-4 px-2 text-lg font-bold text-slate-900">{t("nav.brand")}</div>
       {visibleItems.map((item) => (
         <NavLink key={item.to} to={item.to} className={linkClasses}>
-          {item.label}
+          {t(`nav.${item.labelKey}`)}
         </NavLink>
       ))}
       {visibleFinanceItems.length > 0 && (
         <>
           <div className="mb-1 mt-4 px-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
-            Finance
+            {t("nav.financeSection")}
           </div>
           {visibleFinanceItems.map((item) => (
             <NavLink key={item.to} to={item.to} className={linkClasses}>
-              {item.label}
+              {t(`nav.${item.labelKey}`)}
             </NavLink>
           ))}
         </>

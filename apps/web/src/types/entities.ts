@@ -52,6 +52,7 @@ export interface Branch {
   phone?: string | null;
   vatNumber?: string | null;
   isActive: boolean;
+  isWarehouse: boolean;
   createdAt: string;
 }
 
@@ -76,7 +77,6 @@ export interface ProductVariant {
   sellingPrice: number;
   compareAtPrice?: number | null;
   taxRate: number;
-  reorderPoint?: number | null;
   createdAt: string;
 }
 
@@ -159,6 +159,8 @@ export interface Order {
   branchId: string;
   branch?: Branch;
   cashierUserId: string;
+  soldByEmployeeId?: string | null;
+  soldByEmployee?: Pick<Employee, "id" | "employeeCode" | "fullName"> | null;
   customerId?: string | null;
   customer?: Customer | null;
   source: OrderSource;
@@ -208,6 +210,7 @@ export interface Employee {
   userId?: string | null;
   employeeCode: string;
   fullName: string;
+  email?: string | null;
   branchId: string;
   branch?: Branch;
   roles: RoleName[];
@@ -225,18 +228,6 @@ export interface SalesSummaryReport {
   taxTotal: number;
   total: number;
   byPaymentMethod: { paymentMethodId: string; name: string; amount: number }[];
-}
-
-export interface LowStockReportRow {
-  branchId: string;
-  branchName: string;
-  productVariantId: string;
-  sku: string;
-  productName: string;
-  size?: string | null;
-  color?: string | null;
-  quantityOnHand: number;
-  reorderPoint: number;
 }
 
 /**

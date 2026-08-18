@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import type { CreateReturnInput, ReturnItemInput } from "@qassemiya/shared-types";
 import { listReturns, createReturn } from "@/api/returns";
 import { getSale } from "@/api/sales";
@@ -12,12 +13,16 @@ import { TextField } from "@/components/ui/TextField";
 import { SelectField } from "@/components/ui/SelectField";
 import { useAuthStore } from "@/store/authStore";
 import { useHasPermission } from "@/hooks/useHasPermission";
+import { toast } from "@/store/toastStore";
+import { getErrorMessage } from "@/lib/errorMessage";
+import { randomUUID } from "@/lib/uuid";
 
 function currency(n: number) {
   return new Intl.NumberFormat("en-SA", { style: "currency", currency: "SAR" }).format(n);
 }
 
 function NewReturnForm({ onCreated }: { onCreated: () => void }) {
+  const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
   const [orderId, setOrderId] = useState("");
   const [order, setOrder] = useState<Order | null>(null);
@@ -28,25 +33,36 @@ function NewReturnForm({ onCreated }: { onCreated: () => void }) {
   const paymentMethodsQuery = useQuery({ queryKey: ["payment-methods"], queryFn: listPaymentMethods });
 
   const loadOrderMutation = useMutation({
-    mutationFn: () => getSale(orderId),
+    // Forgiving of both the full order id and the 8-char reference printed
+    // on receipts, and of a leading "#" some staff type out of habit.
+    mutationFn: () => getSale(orderId.trim().replace(/^#/, "")),
     onSuccess: (data) => {
       setOrder(data);
       setSelected({});
     },
+    onError: (err) => toast.error(getErrorMessage(err, t("returns.form.orderNotFoundError"))),
   });
 
   const createReturnMutation = useMutation({
     mutationFn: createReturn,
-    onSuccess: onCreated,
+    onSuccess: () => {
+      onCreated();
+      toast.success(t("returns.created"));
+    },
+    onError: (err) => toast.error(getErrorMessage(err, t("returns.createFailed"))),
   });
 
-  const toggleItem = (itemId: string, unitPrice: number, maxQty: number) => {
+  // lineTotal (not unitPrice * quantity) — it's the tax-inclusive amount
+  // actually charged for this line (unitPrice*qty - discount + tax), same
+  // as what the customer's receipt shows and what POS's own return screen
+  // already refunds. unitPrice alone excludes the tax the customer paid.
+  const toggleItem = (itemId: string, lineTotal: number, maxQty: number) => {
     setSelected((prev) => {
       const next = { ...prev };
       if (next[itemId]) {
         delete next[itemId];
       } else {
-        next[itemId] = { quantity: maxQty, refundAmount: unitPrice * maxQty };
+        next[itemId] = { quantity: maxQty, refundAmount: lineTotal };
       }
       return next;
     });
@@ -64,9 +80,9 @@ function NewReturnForm({ onCreated }: { onCreated: () => void }) {
     }));
     const input: CreateReturnInput = {
       // Client-generated id, same UUIDv7-for-idempotency pattern the plan uses
-      // for POS-created rows; crypto.randomUUID() (v4) is a pragmatic stand-in
-      // here since the web app isn't part of the offline-sync path.
-      id: crypto.randomUUID(),
+      // for POS-created rows; randomUUID() (v4) is a pragmatic stand-in here
+      // since the web app isn't part of the offline-sync path.
+      id: randomUUID(),
       orderId: order.id,
       branchId: order.branchId,
       processedByUserId: user.id,
@@ -83,17 +99,22 @@ function NewReturnForm({ onCreated }: { onCreated: () => void }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-end gap-2">
-        <TextField label="Order ID" value={orderId} onChange={(e) => setOrderId(e.target.value)} />
+        <TextField
+          label={t("returns.form.orderIdLabel")}
+          placeholder={t("returns.form.orderIdPlaceholder")}
+          value={orderId}
+          onChange={(e) => setOrderId(e.target.value)}
+        />
         <Button
           type="button"
           variant="secondary"
           isLoading={loadOrderMutation.isPending}
           onClick={() => orderId && loadOrderMutation.mutate()}
         >
-          Load order
+          {t("returns.form.loadOrderButton")}
         </Button>
       </div>
-      {loadOrderMutation.isError && <p className="text-xs text-red-600">Order not found.</p>}
+      {loadOrderMutation.isError && <p className="text-xs text-red-600">{t("returns.form.orderNotFoundError")}</p>}
 
       {order && (
         <>
@@ -102,9 +123,9 @@ function NewReturnForm({ onCreated }: { onCreated: () => void }) {
               <thead className="bg-slate-50 text-slate-500">
                 <tr>
                   <th className="px-3 py-2" />
-                  <th className="px-3 py-2 font-medium">Item</th>
-                  <th className="px-3 py-2 font-medium">Qty sold</th>
-                  <th className="px-3 py-2 font-medium">Refund</th>
+                  <th className="px-3 py-2 font-medium">{t("returns.form.itemColumn")}</th>
+                  <th className="px-3 py-2 font-medium">{t("returns.form.qtySoldColumn")}</th>
+                  <th className="px-3 py-2 font-medium">{t("returns.form.refundColumn")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -114,12 +135,12 @@ function NewReturnForm({ onCreated }: { onCreated: () => void }) {
                       <input
                         type="checkbox"
                         checked={Boolean(selected[item.id])}
-                        onChange={() => toggleItem(item.id, item.unitPrice, item.quantity)}
+                        onChange={() => toggleItem(item.id, item.lineTotal, item.quantity)}
                       />
                     </td>
                     <td className="px-3 py-2">{item.variant?.sku ?? item.productVariantId}</td>
                     <td className="px-3 py-2">{item.quantity}</td>
-                    <td className="px-3 py-2">{currency(item.unitPrice * item.quantity)}</td>
+                    <td className="px-3 py-2">{currency(item.lineTotal)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -127,11 +148,11 @@ function NewReturnForm({ onCreated }: { onCreated: () => void }) {
           </div>
 
           <SelectField
-            label="Refund method"
+            label={t("returns.form.refundMethodLabel")}
             value={refundPaymentMethodId}
             onChange={(e) => setRefundPaymentMethodId(e.target.value)}
           >
-            <option value="">Select how the refund was paid out…</option>
+            <option value="">{t("returns.form.selectRefundMethodPlaceholder")}</option>
             {paymentMethodsQuery.data?.map((pm) => (
               <option key={pm.id} value={pm.id}>
                 {pm.name}
@@ -139,10 +160,10 @@ function NewReturnForm({ onCreated }: { onCreated: () => void }) {
             ))}
           </SelectField>
 
-          <TextField label="Reason" value={reason} onChange={(e) => setReason(e.target.value)} />
+          <TextField label={t("returns.form.reasonLabel")} value={reason} onChange={(e) => setReason(e.target.value)} />
 
           <div className="flex items-center justify-between text-sm font-medium">
-            <span>Total refund</span>
+            <span>{t("returns.form.totalRefundLabel")}</span>
             <span>{currency(totalRefundAmount)}</span>
           </div>
 
@@ -152,10 +173,10 @@ function NewReturnForm({ onCreated }: { onCreated: () => void }) {
             disabled={Object.keys(selected).length === 0 || !refundPaymentMethodId}
             onClick={handleSubmit}
           >
-            Create return
+            {t("returns.form.createButton")}
           </Button>
           {createReturnMutation.isError && (
-            <p className="text-xs text-red-600">Could not create the return. Please try again.</p>
+            <p className="text-xs text-red-600">{t("returns.form.createInlineError")}</p>
           )}
         </>
       )}
@@ -164,6 +185,7 @@ function NewReturnForm({ onCreated }: { onCreated: () => void }) {
 }
 
 export function ReturnsPage() {
+  const { t } = useTranslation();
   const canCreate = useHasPermission("pos.return.create");
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
@@ -173,8 +195,8 @@ export function ReturnsPage() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-900">Returns</h1>
-        {canCreate && <Button onClick={() => setModalOpen(true)}>New return</Button>}
+        <h1 className="text-2xl font-bold text-slate-900">{t("returns.title")}</h1>
+        {canCreate && <Button onClick={() => setModalOpen(true)}>{t("returns.newReturn")}</Button>}
       </div>
 
       <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
@@ -183,16 +205,16 @@ export function ReturnsPage() {
           isError={returnsQuery.isError}
           error={returnsQuery.error}
           isEmpty={(returnsQuery.data?.length ?? 0) === 0}
-          emptyMessage="No returns recorded yet."
+          emptyMessage={t("returns.empty")}
         >
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 text-slate-500">
               <tr>
-                <th className="px-4 py-2 font-medium">Date</th>
-                <th className="px-4 py-2 font-medium">Order</th>
-                <th className="px-4 py-2 font-medium">Reason</th>
-                <th className="px-4 py-2 font-medium">Refund amount</th>
-                <th className="px-4 py-2 font-medium">Status</th>
+                <th className="px-4 py-2 font-medium">{t("returns.dateColumn")}</th>
+                <th className="px-4 py-2 font-medium">{t("returns.orderColumn")}</th>
+                <th className="px-4 py-2 font-medium">{t("returns.reasonColumn")}</th>
+                <th className="px-4 py-2 font-medium">{t("returns.refundAmountColumn")}</th>
+                <th className="px-4 py-2 font-medium">{t("common.status")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -202,7 +224,7 @@ export function ReturnsPage() {
                   <td className="px-4 py-2 text-slate-600">{r.orderId.slice(0, 8)}</td>
                   <td className="px-4 py-2 text-slate-600">{r.reason ?? "—"}</td>
                   <td className="px-4 py-2 font-medium text-slate-900">{currency(r.totalRefundAmount)}</td>
-                  <td className="px-4 py-2 text-slate-600">{r.status}</td>
+                  <td className="px-4 py-2 text-slate-600">{t(`returns.statuses.${r.status}`)}</td>
                 </tr>
               ))}
             </tbody>
@@ -210,7 +232,7 @@ export function ReturnsPage() {
         </DataState>
       </div>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="New return">
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={t("returns.newReturn")}>
         <NewReturnForm
           onCreated={() => {
             queryClient.invalidateQueries({ queryKey: ["returns"] });

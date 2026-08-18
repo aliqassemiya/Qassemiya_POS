@@ -18,9 +18,11 @@ export async function buildSaleBundle(orderId: string): Promise<SyncBundle | nul
       id: order.id,
       branchId: order.branchId,
       cashierUserId: order.cashierUserId,
+      soldByEmployeeId: order.soldByEmployeeId ?? undefined,
       customerId: order.customerId ?? undefined,
       source: (order.source as (typeof OrderSource)[keyof typeof OrderSource]) ?? OrderSource.POS,
       items: items.map((item) => ({
+        id: item.id,
         productVariantId: item.productVariantId,
         quantity: item.quantity,
         unitPrice: item.unitPrice,

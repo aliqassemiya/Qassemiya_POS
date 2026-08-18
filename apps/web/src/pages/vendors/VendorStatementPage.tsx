@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { getVendorStatement } from "@/api/vendors";
 import { DataState } from "@/components/ui/DataState";
 
@@ -14,6 +15,7 @@ const TYPE_CLASSES: Record<string, string> = {
 };
 
 export function VendorStatementPage() {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
@@ -33,7 +35,7 @@ export function VendorStatementPage() {
           <div className="flex items-center justify-between">
             <div>
               <button onClick={() => navigate(-1)} className="mb-1 text-xs text-slate-500 underline">
-                ← Back
+                {t("vendors.statement.back")}
               </button>
               <h1 className="text-2xl font-bold text-slate-900">{statementQuery.data.vendor.name}</h1>
               <p className="text-sm text-slate-500">
@@ -43,7 +45,7 @@ export function VendorStatementPage() {
               </p>
             </div>
             <div className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-right">
-              <p className="text-xs text-slate-500">Outstanding balance</p>
+              <p className="text-xs text-slate-500">{t("vendors.statement.outstandingBalance")}</p>
               <p className="text-lg font-semibold text-slate-900">{currency(statementQuery.data.balance)}</p>
             </div>
           </div>
@@ -53,17 +55,17 @@ export function VendorStatementPage() {
               isLoading={false}
               isError={false}
               isEmpty={statementQuery.data.entries.length === 0}
-              emptyMessage="No invoices, payments, or returns recorded for this vendor yet."
+              emptyMessage={t("vendors.statement.empty")}
             >
               <table className="w-full text-left text-sm">
                 <thead className="bg-slate-50 text-slate-500">
                   <tr>
-                    <th className="px-4 py-2 font-medium">Date</th>
-                    <th className="px-4 py-2 font-medium">Type</th>
-                    <th className="px-4 py-2 font-medium">Reference</th>
-                    <th className="px-4 py-2 font-medium">Debit</th>
-                    <th className="px-4 py-2 font-medium">Credit</th>
-                    <th className="px-4 py-2 font-medium">Balance</th>
+                    <th className="px-4 py-2 font-medium">{t("vendors.statement.dateColumn")}</th>
+                    <th className="px-4 py-2 font-medium">{t("vendors.statement.typeColumn")}</th>
+                    <th className="px-4 py-2 font-medium">{t("vendors.statement.referenceColumn")}</th>
+                    <th className="px-4 py-2 font-medium">{t("vendors.statement.debitColumn")}</th>
+                    <th className="px-4 py-2 font-medium">{t("vendors.statement.creditColumn")}</th>
+                    <th className="px-4 py-2 font-medium">{t("vendors.statement.balanceColumn")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -76,7 +78,7 @@ export function VendorStatementPage() {
                             TYPE_CLASSES[entry.type] ?? "bg-slate-100 text-slate-600"
                           }`}
                         >
-                          {entry.type}
+                          {t(`vendors.statement.types.${entry.type}`)}
                         </span>
                       </td>
                       <td className="px-4 py-2 text-slate-600">{entry.referenceLabel ?? entry.referenceId.slice(0, 8)}</td>

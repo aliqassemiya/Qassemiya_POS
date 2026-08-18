@@ -5,8 +5,11 @@ import type { Employee } from "@/types/entities";
 export interface EmployeeInput {
   employeeCode: string;
   fullName: string;
+  email?: string;
   branchId: string;
-  roles: RoleName[];
+  // Omit both to create a sales-attribution-only employee with no system
+  // access (no login) — see EmployeeForm's "Grant POS access" toggle.
+  roles?: RoleName[];
   pinCode?: string;
   isActive?: boolean;
 }

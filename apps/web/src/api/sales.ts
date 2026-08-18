@@ -4,6 +4,7 @@ import type { Order } from "@/types/entities";
 export interface SalesQuery {
   branchId?: string;
   paymentMethodId?: string;
+  soldByEmployeeId?: string;
   from?: string;
   to?: string;
 }

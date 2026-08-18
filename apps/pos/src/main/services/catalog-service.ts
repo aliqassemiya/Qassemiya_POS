@@ -135,6 +135,11 @@ export async function listPaymentMethods() {
   return getDb().selectFrom("paymentMethod").selectAll().where("isActive", "=", 1).orderBy("name", "asc").execute();
 }
 
+/** Already scoped to this device's own branch by the sync pull itself — see sync.service.ts's catalog(). */
+export async function listEmployees() {
+  return getDb().selectFrom("employee").selectAll().orderBy("fullName", "asc").execute();
+}
+
 export interface CreateCustomerInput {
   fullName: string;
   phone: string;

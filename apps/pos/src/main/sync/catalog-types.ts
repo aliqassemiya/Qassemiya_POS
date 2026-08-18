@@ -40,7 +40,6 @@ export interface CatalogVariantRow {
   sellingPrice: number;
   compareAtPrice?: number | null;
   taxRate: number;
-  reorderPoint?: number | null;
   updatedAt: string;
 }
 
@@ -68,6 +67,14 @@ export interface CatalogPaymentMethodRow {
   updatedAt: string;
 }
 
+export interface CatalogEmployeeRow {
+  id: string;
+  employeeCode: string;
+  fullName: string;
+  branchId: string;
+  updatedAt: string;
+}
+
 export interface SyncCatalogResponse {
   serverTime: string;
   categories: CatalogCategoryRow[];
@@ -76,4 +83,5 @@ export interface SyncCatalogResponse {
   inventory: CatalogInventoryRow[];
   customers: CatalogCustomerRow[];
   paymentMethods: CatalogPaymentMethodRow[];
+  employees: CatalogEmployeeRow[];
 }

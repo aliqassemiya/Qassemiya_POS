@@ -43,7 +43,6 @@ export interface ProductVariantTable {
   sellingPrice: number;
   compareAtPrice: number | null;
   taxRate: number;
-  reorderPoint: number | null;
   updatedAt: string;
 }
 
@@ -71,10 +70,20 @@ export interface PaymentMethodTable {
   updatedAt: string;
 }
 
+/** Read-cache, scoped to this device's own branch — see catalog-service.ts. */
+export interface EmployeeTable {
+  id: string;
+  employeeCode: string;
+  fullName: string;
+  branchId: string;
+  updatedAt: string;
+}
+
 export interface OrderTable {
   id: string;
   branchId: string;
   cashierUserId: string;
+  soldByEmployeeId: string | null;
   customerId: string | null;
   source: string;
   status: string;
@@ -156,6 +165,7 @@ export interface Database {
   inventory: InventoryTable;
   customer: CustomerTable;
   paymentMethod: PaymentMethodTable;
+  employee: EmployeeTable;
   order: OrderTable;
   orderItem: OrderItemTable;
   payment: PaymentTable;

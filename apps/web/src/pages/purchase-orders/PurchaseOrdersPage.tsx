@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { listBranches } from "@/api/branches";
 import { listVendors } from "@/api/vendors";
 import { listPurchaseOrders } from "@/api/purchase-orders";
@@ -18,6 +19,7 @@ const STATUS_CLASSES: Record<string, string> = {
 };
 
 export function PurchaseOrdersPage() {
+  const { t } = useTranslation();
   const canManage = useHasPermission("purchases.po.manage");
   const activeBranchId = useAuthStore((s) => s.activeBranchId);
 
@@ -45,13 +47,13 @@ export function PurchaseOrdersPage() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-900">Purchase orders</h1>
+        <h1 className="text-2xl font-bold text-slate-900">{t("purchaseOrders.title")}</h1>
         {canManage && (
           <Link
             to="/purchase-orders/new"
             className="inline-flex items-center justify-center gap-2 rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-700"
           >
-            New purchase order
+            {t("purchaseOrders.newPurchaseOrder")}
           </Link>
         )}
       </div>
@@ -62,7 +64,7 @@ export function PurchaseOrdersPage() {
           onChange={(e) => setVendorId(e.target.value)}
           className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
         >
-          <option value="">All vendors</option>
+          <option value="">{t("purchaseOrders.allVendors")}</option>
           {vendorsQuery.data?.map((v) => (
             <option key={v.id} value={v.id}>
               {v.name}
@@ -74,7 +76,7 @@ export function PurchaseOrdersPage() {
           onChange={(e) => setBranchId(e.target.value)}
           className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
         >
-          <option value="">All branches</option>
+          <option value="">{t("common.allBranches")}</option>
           {branchesQuery.data?.map((b) => (
             <option key={b.id} value={b.id}>
               {b.name}
@@ -86,15 +88,15 @@ export function PurchaseOrdersPage() {
           onChange={(e) => setStatus(e.target.value)}
           className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
         >
-          <option value="">All statuses</option>
+          <option value="">{t("purchaseOrders.allStatuses")}</option>
           {Object.values(PurchaseOrderStatus).map((s) => (
             <option key={s} value={s}>
-              {s}
+              {t(`purchaseOrders.statuses.${s}`)}
             </option>
           ))}
         </select>
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-slate-500">From</label>
+          <label className="text-xs text-slate-500">{t("common.from")}</label>
           <input
             type="date"
             value={from}
@@ -103,7 +105,7 @@ export function PurchaseOrdersPage() {
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-slate-500">To</label>
+          <label className="text-xs text-slate-500">{t("common.to")}</label>
           <input
             type="date"
             value={to}
@@ -119,16 +121,16 @@ export function PurchaseOrdersPage() {
           isError={poQuery.isError}
           error={poQuery.error}
           isEmpty={(poQuery.data?.length ?? 0) === 0}
-          emptyMessage="No purchase orders match your filters."
+          emptyMessage={t("purchaseOrders.empty")}
         >
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 text-slate-500">
               <tr>
-                <th className="px-4 py-2 font-medium">Date</th>
-                <th className="px-4 py-2 font-medium">Vendor</th>
-                <th className="px-4 py-2 font-medium">Branch</th>
-                <th className="px-4 py-2 font-medium">Items</th>
-                <th className="px-4 py-2 font-medium">Status</th>
+                <th className="px-4 py-2 font-medium">{t("purchaseOrders.dateColumn")}</th>
+                <th className="px-4 py-2 font-medium">{t("purchaseOrders.vendorColumn")}</th>
+                <th className="px-4 py-2 font-medium">{t("purchaseOrders.branchColumn")}</th>
+                <th className="px-4 py-2 font-medium">{t("purchaseOrders.itemsColumn")}</th>
+                <th className="px-4 py-2 font-medium">{t("common.status")}</th>
                 <th className="px-4 py-2" />
               </tr>
             </thead>
@@ -145,12 +147,12 @@ export function PurchaseOrdersPage() {
                         STATUS_CLASSES[po.status] ?? "bg-slate-100 text-slate-600"
                       }`}
                     >
-                      {po.status}
+                      {t(`purchaseOrders.statuses.${po.status}`)}
                     </span>
                   </td>
                   <td className="px-4 py-2 text-right">
                     <Link to={`/purchase-orders/${po.id}`} className="text-sm font-medium text-slate-900 underline">
-                      View
+                      {t("common.view")}
                     </Link>
                   </td>
                 </tr>

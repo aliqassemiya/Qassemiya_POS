@@ -32,6 +32,12 @@ interface CustomerRow {
   phone: string | null;
 }
 
+interface EmployeeRow {
+  id: string;
+  employeeCode: string;
+  fullName: string;
+}
+
 export function TillScreen() {
   const { t } = useTranslation();
   const pairing = useSessionStore((s) => s.pairing);
@@ -40,12 +46,14 @@ export function TillScreen() {
 
   const items = useCartStore((s) => s.items);
   const customer = useCartStore((s) => s.customer);
+  const soldByEmployee = useCartStore((s) => s.soldByEmployee);
   const payments = useCartStore((s) => s.payments);
   const addItem = useCartStore((s) => s.addItem);
   const setQuantity = useCartStore((s) => s.setQuantity);
   const setDiscount = useCartStore((s) => s.setDiscount);
   const removeItem = useCartStore((s) => s.removeItem);
   const setCustomer = useCartStore((s) => s.setCustomer);
+  const setSoldByEmployee = useCartStore((s) => s.setSoldByEmployee);
   const addPayment = useCartStore((s) => s.addPayment);
   const updatePayment = useCartStore((s) => s.updatePayment);
   const removePayment = useCartStore((s) => s.removePayment);
@@ -54,6 +62,7 @@ export function TillScreen() {
   const [scanValue, setScanValue] = useState("");
   const [results, setResults] = useState<VariantResult[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodRow[]>([]);
+  const [employees, setEmployees] = useState<EmployeeRow[]>([]);
   const [customerQuery, setCustomerQuery] = useState("");
   const [customerResults, setCustomerResults] = useState<CustomerRow[]>([]);
   const [showNewCustomerForm, setShowNewCustomerForm] = useState(false);
@@ -66,6 +75,7 @@ export function TillScreen() {
 
   useEffect(() => {
     window.api.catalog.listPaymentMethods().then(setPaymentMethods);
+    window.api.catalog.listEmployees().then(setEmployees);
     scanRef.current?.focus();
   }, []);
 
@@ -179,6 +189,7 @@ export function TillScreen() {
       const result = await window.api.sales.checkout({
         branchId: pairing.branchId,
         cashierUserId: session.userId,
+        soldByEmployeeId: soldByEmployee?.id ?? null,
         customerId: customer?.id ?? null,
         customerName: customer?.name,
         items: items.map((i) => ({
@@ -234,18 +245,33 @@ export function TillScreen() {
         {results.length > 0 && (
           <div className="search-results">
             {results.map((r) => (
-              <div key={r.id} className="search-result-row" onClick={() => addVariantToCart(r)}>
+              <div key={r.id} className="product-card" onClick={() => addVariantToCart(r)}>
                 {r.imageUrl ? (
-                  <img src={r.imageUrl} alt="" className="result-thumb" onError={(e) => (e.currentTarget.style.visibility = "hidden")} />
-                ) : (
-                  <span className="result-thumb result-thumb-empty" />
-                )}
-                <span>
-                  {r.productName} {r.size ? `(${r.size}${r.color ? "/" + r.color : ""})` : ""} — {r.sku}
+                  <img
+                    src={r.imageUrl}
+                    alt=""
+                    className="product-card-image"
+                    onError={(e) => {
+                      e.currentTarget.style.display = "none";
+                      const placeholder = e.currentTarget.nextElementSibling as HTMLElement | null;
+                      if (placeholder) placeholder.style.display = "flex";
+                    }}
+                  />
+                ) : null}
+                <span className="product-card-image-empty" style={{ display: r.imageUrl ? "none" : "flex" }}>
+                  🖼
                 </span>
-                <span>
-                  {money(r.sellingPrice)} {r.quantityOnHand !== null ? `· qty ${r.quantityOnHand}` : ""}
-                </span>
+                <div className="product-card-body">
+                  <span className="product-card-name">
+                    {r.productName}
+                    {r.size ? ` (${r.size}${r.color ? "/" + r.color : ""})` : ""}
+                  </span>
+                  <span className="product-card-sku">{r.sku}</span>
+                  <div className="product-card-footer">
+                    <span className="product-card-price">{money(r.sellingPrice)}</span>
+                    {r.quantityOnHand !== null && <span className="product-card-qty">{t("till.qtyAbbrev", { qty: r.quantityOnHand })}</span>}
+                  </div>
+                </div>
               </div>
             ))}
           </div>
@@ -272,7 +298,7 @@ export function TillScreen() {
                         <img
                           src={i.imageUrl}
                           alt=""
-                          className="result-thumb"
+                          className="cart-thumb"
                           onError={(e) => (e.currentTarget.style.visibility = "hidden")}
                         />
                       )}
@@ -322,6 +348,24 @@ export function TillScreen() {
       </div>
 
       <div className="panel">
+        <h3 style={{ marginTop: 0 }}>{t("till.salesperson")}</h3>
+        <select
+          className="field"
+          style={{ width: "100%", padding: 8, marginBottom: 16 }}
+          value={soldByEmployee?.id ?? ""}
+          onChange={(e) => {
+            const emp = employees.find((x) => x.id === e.target.value);
+            setSoldByEmployee(emp ? { id: emp.id, fullName: emp.fullName } : null);
+          }}
+        >
+          <option value="">{t("till.noSalesperson")}</option>
+          {employees.map((e) => (
+            <option key={e.id} value={e.id}>
+              {e.fullName} ({e.employeeCode})
+            </option>
+          ))}
+        </select>
+
         <h3 style={{ marginTop: 0 }}>{t("till.customer")}</h3>
         {customer ? (
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>

@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { z } from "zod";
 import { createBranch, listBranches, updateBranch, type BranchInput } from "@/api/branches";
 import type { Branch } from "@/types/entities";
@@ -10,17 +11,22 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/TextField";
 import { useHasPermission } from "@/hooks/useHasPermission";
+import { toast } from "@/store/toastStore";
+import { getErrorMessage } from "@/lib/errorMessage";
 
 // No shared-types schema exists for Branch yet — this mirrors the Branch model
-// fields described in the plan (name/nameAr/address/phone/vatNumber/isActive).
-const branchSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  nameAr: z.string().optional(),
-  address: z.string().optional(),
-  phone: z.string().optional(),
-  vatNumber: z.string().optional(),
-  isActive: z.boolean().default(true),
-});
+// fields described in the plan (name/nameAr/address/phone/vatNumber/isActive/isWarehouse).
+function buildBranchSchema(t: (key: string) => string) {
+  return z.object({
+    name: z.string().min(1, t("branches.nameRequired")),
+    nameAr: z.string().optional(),
+    address: z.string().optional(),
+    phone: z.string().optional(),
+    vatNumber: z.string().optional(),
+    isActive: z.boolean().default(true),
+    isWarehouse: z.boolean().default(false),
+  });
+}
 
 function BranchForm({
   initial,
@@ -31,6 +37,8 @@ function BranchForm({
   onSubmit: (input: BranchInput) => void;
   isPending: boolean;
 }) {
+  const { t } = useTranslation();
+  const branchSchema = useMemo(() => buildBranchSchema(t), [t]);
   const {
     register,
     handleSubmit,
@@ -45,29 +53,35 @@ function BranchForm({
           phone: initial.phone ?? "",
           vatNumber: initial.vatNumber ?? "",
           isActive: initial.isActive,
+          isWarehouse: initial.isWarehouse,
         }
-      : { isActive: true },
+      : { isActive: true, isWarehouse: false },
   });
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
-      <TextField label="Name" error={errors.name} {...register("name")} />
-      <TextField label="Name (Arabic)" error={errors.nameAr} {...register("nameAr")} />
-      <TextField label="Address" error={errors.address} {...register("address")} />
-      <TextField label="Phone" error={errors.phone} {...register("phone")} />
-      <TextField label="VAT Number" error={errors.vatNumber} {...register("vatNumber")} />
+      <TextField label={t("common.name")} error={errors.name} {...register("name")} />
+      <TextField label={t("branches.nameArabicLabel")} error={errors.nameAr} {...register("nameAr")} />
+      <TextField label={t("common.address")} error={errors.address} {...register("address")} />
+      <TextField label={t("common.phone")} error={errors.phone} {...register("phone")} />
+      <TextField label={t("branches.vatNumberLabel")} error={errors.vatNumber} {...register("vatNumber")} />
       <label className="flex items-center gap-2 text-sm text-slate-700">
         <input type="checkbox" {...register("isActive")} />
-        Active
+        {t("common.active")}
+      </label>
+      <label className="flex items-center gap-2 text-sm text-slate-700">
+        <input type="checkbox" {...register("isWarehouse")} />
+        {t("branches.mainWarehouseLabel")}
       </label>
       <Button type="submit" isLoading={isPending}>
-        Save
+        {t("common.save")}
       </Button>
     </form>
   );
 }
 
 export function BranchesPage() {
+  const { t } = useTranslation();
   const canManage = useHasPermission("branches.manage");
   const queryClient = useQueryClient();
   const [modalState, setModalState] = useState<{ open: boolean; branch?: Branch }>({ open: false });
@@ -79,7 +93,9 @@ export function BranchesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["branches"] });
       setModalState({ open: false });
+      toast.success(t("branches.created"));
     },
+    onError: (err) => toast.error(getErrorMessage(err, t("branches.createFailed"))),
   });
 
   const updateMutation = useMutation({
@@ -87,14 +103,16 @@ export function BranchesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["branches"] });
       setModalState({ open: false });
+      toast.success(t("branches.updated"));
     },
+    onError: (err) => toast.error(getErrorMessage(err, t("branches.updateFailed"))),
   });
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-900">Branches</h1>
-        {canManage && <Button onClick={() => setModalState({ open: true })}>New branch</Button>}
+        <h1 className="text-2xl font-bold text-slate-900">{t("branches.title")}</h1>
+        {canManage && <Button onClick={() => setModalState({ open: true })}>{t("branches.newBranch")}</Button>}
       </div>
 
       <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
@@ -103,15 +121,15 @@ export function BranchesPage() {
           isError={branchesQuery.isError}
           error={branchesQuery.error}
           isEmpty={(branchesQuery.data?.length ?? 0) === 0}
-          emptyMessage="No branches yet."
+          emptyMessage={t("branches.empty")}
         >
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 text-slate-500">
               <tr>
-                <th className="px-4 py-2 font-medium">Name</th>
-                <th className="px-4 py-2 font-medium">Address</th>
-                <th className="px-4 py-2 font-medium">Phone</th>
-                <th className="px-4 py-2 font-medium">Status</th>
+                <th className="px-4 py-2 font-medium">{t("common.name")}</th>
+                <th className="px-4 py-2 font-medium">{t("common.address")}</th>
+                <th className="px-4 py-2 font-medium">{t("common.phone")}</th>
+                <th className="px-4 py-2 font-medium">{t("common.status")}</th>
                 {canManage && <th className="px-4 py-2" />}
               </tr>
             </thead>
@@ -127,13 +145,18 @@ export function BranchesPage() {
                         branch.isActive ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"
                       }`}
                     >
-                      {branch.isActive ? "Active" : "Inactive"}
+                      {branch.isActive ? t("common.active") : t("common.inactive")}
                     </span>
+                    {branch.isWarehouse && (
+                      <span className="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                        {t("branches.warehouseBadge")}
+                      </span>
+                    )}
                   </td>
                   {canManage && (
                     <td className="px-4 py-2 text-right">
                       <Button variant="ghost" onClick={() => setModalState({ open: true, branch })}>
-                        Edit
+                        {t("common.edit")}
                       </Button>
                     </td>
                   )}
@@ -147,7 +170,7 @@ export function BranchesPage() {
       <Modal
         open={modalState.open}
         onClose={() => setModalState({ open: false })}
-        title={modalState.branch ? "Edit branch" : "New branch"}
+        title={modalState.branch ? t("branches.editBranch") : t("branches.newBranch")}
       >
         <BranchForm
           initial={modalState.branch}

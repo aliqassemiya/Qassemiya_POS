@@ -2,26 +2,27 @@ import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../../common/prisma/prisma.service";
 import { applyStockMovement } from "../../common/inventory/stock-ledger";
 import { postJournalEntry, resolveAccountIdByCode } from "../../common/accounting/journal-ledger";
-import type { InventoryListQueryDto, MovementsQueryDto, StockAdjustDto } from "./inventory.dto";
+import { newId } from "../../common/utils/uuid";
+import type {
+  InventoryBulkAdjustDto,
+  InventoryListQueryDto,
+  MovementsQueryDto,
+  StockAdjustDto,
+  StockTransferDto,
+} from "./inventory.dto";
 
 @Injectable()
 export class InventoryService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(query: InventoryListQueryDto) {
-    const rows = await this.prisma.inventory.findMany({
+  findAll(query: InventoryListQueryDto) {
+    return this.prisma.inventory.findMany({
       where: {
         ...(query.branchId ? { branchId: query.branchId } : {}),
-        ...(query.lowStockOnly ? { productVariant: { reorderPoint: { not: null } } } : {}),
       },
       include: { productVariant: { include: { product: true } }, branch: true },
       orderBy: { updatedAt: "desc" },
     });
-
-    if (!query.lowStockOnly) return rows;
-    return rows.filter(
-      (r) => r.productVariant.reorderPoint !== null && r.quantityOnHand <= r.productVariant.reorderPoint!,
-    );
   }
 
   findMovements(query: MovementsQueryDto) {
@@ -95,5 +96,100 @@ export class InventoryService {
     return this.prisma.inventory.findUnique({
       where: { branchId_productVariantId: { branchId: dto.branchId, productVariantId: dto.productVariantId } },
     });
+  }
+
+  /**
+   * Instant branch-to-branch distribution (e.g. main warehouse -> store).
+   * Each line posts a paired TRANSFER_OUT/TRANSFER_IN atomically, linked by
+   * a shared referenceId. No GL entry — the chart of accounts is
+   * company-wide, so a transfer nets to zero at the account level (same
+   * reasoning as the existing adjust() TRANSFER_IN/OUT comment above).
+   */
+  async transfer(dto: StockTransferDto, userId: string) {
+    const transferId = newId();
+    await this.prisma.$transaction(async (tx) => {
+      for (const line of dto.lines) {
+        await applyStockMovement(tx, {
+          branchId: dto.fromBranchId,
+          productVariantId: line.productVariantId,
+          quantityChange: -line.quantity,
+          type: "TRANSFER_OUT",
+          referenceType: "STOCK_TRANSFER",
+          referenceId: transferId,
+          note: dto.note,
+          createdByUserId: userId,
+        });
+        await applyStockMovement(tx, {
+          branchId: dto.toBranchId,
+          productVariantId: line.productVariantId,
+          quantityChange: line.quantity,
+          type: "TRANSFER_IN",
+          referenceType: "STOCK_TRANSFER",
+          referenceId: transferId,
+          note: dto.note,
+          createdByUserId: userId,
+        });
+      }
+    });
+
+    return this.prisma.inventory.findMany({
+      where: {
+        branchId: { in: [dto.fromBranchId, dto.toBranchId] },
+        productVariantId: { in: dto.lines.map((l) => l.productVariantId) },
+      },
+      include: { productVariant: { include: { product: true } }, branch: true },
+    });
+  }
+
+  /**
+   * Bulk stock-count reconciliation from an uploaded CSV — matches each row
+   * by productVariantId (preferred) or sku within its branch, computes the
+   * delta against the current on-hand quantity, and posts it as a single
+   * ADJUSTMENT movement per row via the same choke point manual adjustments
+   * use. Rows with zero delta are skipped (nothing to reconcile).
+   */
+  async bulkAdjust(dto: InventoryBulkAdjustDto, userId: string) {
+    let updated = 0;
+    const errors: Array<{ row: number; message: string }> = [];
+
+    for (const [index, row] of dto.rows.entries()) {
+      const { branchId, productVariantId, sku, quantityOnHand } = row;
+      if (!productVariantId && !sku) {
+        errors.push({ row: index + 1, message: "Row has neither productVariantId nor sku" });
+        continue;
+      }
+
+      try {
+        const variant = await this.prisma.productVariant.findUniqueOrThrow({
+          where: productVariantId ? { id: productVariantId } : { sku: sku! },
+        });
+        const existing = await this.prisma.inventory.findUnique({
+          where: { branchId_productVariantId: { branchId, productVariantId: variant.id } },
+        });
+        const currentQty = existing?.quantityOnHand ?? 0;
+        const delta = quantityOnHand - currentQty;
+        if (delta === 0) continue;
+
+        await this.prisma.$transaction((tx) =>
+          applyStockMovement(tx, {
+            branchId,
+            productVariantId: variant.id,
+            quantityChange: delta,
+            type: "ADJUSTMENT",
+            referenceType: "BULK_IMPORT",
+            note: "Bulk inventory CSV import",
+            createdByUserId: userId,
+          }),
+        );
+        updated += 1;
+      } catch {
+        errors.push({
+          row: index + 1,
+          message: `No variant found for ${productVariantId ? `id ${productVariantId}` : `sku ${sku}`}`,
+        });
+      }
+    }
+
+    return { updated, errorCount: errors.length, errors };
   }
 }

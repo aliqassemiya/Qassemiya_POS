@@ -10,6 +10,7 @@ export const createBranchSchema = z.object({
 });
 export const updateBranchSchema = createBranchSchema.partial().extend({
   isActive: z.boolean().optional(),
+  isWarehouse: z.boolean().optional(),
 });
 
 export class CreateBranchDto extends createZodDto(createBranchSchema) {}

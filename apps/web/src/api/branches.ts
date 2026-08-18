@@ -8,6 +8,7 @@ export interface BranchInput {
   phone?: string;
   vatNumber?: string;
   isActive?: boolean;
+  isWarehouse?: boolean;
 }
 
 export async function listBranches(): Promise<Branch[]> {

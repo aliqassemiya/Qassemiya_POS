@@ -26,6 +26,7 @@ export interface CheckoutPaymentInput {
 export interface CheckoutInput {
   branchId: string;
   cashierUserId: string;
+  soldByEmployeeId?: string | null;
   customerId?: string | null;
   customerName?: string;
   items: CheckoutItemInput[];
@@ -55,6 +56,7 @@ export async function createSale(input: CheckoutInput): Promise<CheckoutResult> 
         id: orderId,
         branchId: input.branchId,
         cashierUserId: input.cashierUserId,
+        soldByEmployeeId: input.soldByEmployeeId ?? null,
         customerId: input.customerId ?? null,
         source: OrderSource.POS,
         status: "COMPLETED",

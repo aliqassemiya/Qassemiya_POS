@@ -1,16 +1,20 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { getSale, voidSale } from "@/api/sales";
 import { DataState } from "@/components/ui/DataState";
 import { Button } from "@/components/ui/Button";
 import { useHasPermission } from "@/hooks/useHasPermission";
+import { toast } from "@/store/toastStore";
+import { getErrorMessage } from "@/lib/errorMessage";
 
 function currency(n: number) {
   return new Intl.NumberFormat("en-SA", { style: "currency", currency: "SAR" }).format(n);
 }
 
 export function SaleDetailPage() {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -24,7 +28,9 @@ export function SaleDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sales"] });
       queryClient.invalidateQueries({ queryKey: ["sales", id] });
+      toast.success(t("sales.detail.voided"));
     },
+    onError: (err) => toast.error(getErrorMessage(err, t("sales.detail.voidFailed"))),
   });
 
   return (
@@ -34,16 +40,18 @@ export function SaleDetailPage() {
           <div className="flex items-center justify-between">
             <div>
               <button onClick={() => navigate(-1)} className="mb-1 text-xs text-slate-500 underline">
-                ← Back
+                {t("sales.detail.back")}
               </button>
-              <h1 className="text-2xl font-bold text-slate-900">Order #{saleQuery.data.id.slice(0, 8)}</h1>
+              <h1 className="text-2xl font-bold text-slate-900">
+                {t("sales.detail.orderTitle", { id: saleQuery.data.id.slice(0, 8) })}
+              </h1>
               <p className="text-sm text-slate-500">
                 {new Date(saleQuery.data.createdAt).toLocaleString()} · {saleQuery.data.branch?.name ?? "—"} ·{" "}
                 {saleQuery.data.source}
               </p>
             </div>
             <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-700">
-              {saleQuery.data.status}
+              {t(`sales.statuses.${saleQuery.data.status}`)}
             </span>
           </div>
 
@@ -51,12 +59,12 @@ export function SaleDetailPage() {
             <table className="w-full text-left text-sm">
               <thead className="bg-slate-50 text-slate-500">
                 <tr>
-                  <th className="px-4 py-2 font-medium">Item</th>
-                  <th className="px-4 py-2 font-medium">Qty</th>
-                  <th className="px-4 py-2 font-medium">Unit price</th>
-                  <th className="px-4 py-2 font-medium">Discount</th>
-                  <th className="px-4 py-2 font-medium">Tax</th>
-                  <th className="px-4 py-2 font-medium">Line total</th>
+                  <th className="px-4 py-2 font-medium">{t("sales.detail.itemColumn")}</th>
+                  <th className="px-4 py-2 font-medium">{t("sales.detail.qtyColumn")}</th>
+                  <th className="px-4 py-2 font-medium">{t("sales.detail.unitPriceColumn")}</th>
+                  <th className="px-4 py-2 font-medium">{t("sales.detail.discountColumn")}</th>
+                  <th className="px-4 py-2 font-medium">{t("sales.detail.taxColumn")}</th>
+                  <th className="px-4 py-2 font-medium">{t("sales.detail.lineTotalColumn")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -76,9 +84,36 @@ export function SaleDetailPage() {
             </table>
           </div>
 
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm">
+              <h2 className="mb-2 text-sm font-semibold text-slate-700">{t("sales.detail.customerTitle")}</h2>
+              {saleQuery.data.customer ? (
+                <div className="flex flex-col gap-1">
+                  <span className="font-medium text-slate-900">{saleQuery.data.customer.fullName}</span>
+                  {saleQuery.data.customer.phone && (
+                    <span className="text-slate-600">{saleQuery.data.customer.phone}</span>
+                  )}
+                  {saleQuery.data.customer.email && (
+                    <span className="text-slate-600">{saleQuery.data.customer.email}</span>
+                  )}
+                </div>
+              ) : (
+                <span className="text-slate-500">{t("sales.detail.walkInCustomer")}</span>
+              )}
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm">
+              <h2 className="mb-2 text-sm font-semibold text-slate-700">{t("sales.detail.salespersonTitle")}</h2>
+              {saleQuery.data.soldByEmployee ? (
+                <div className="flex flex-col gap-1">
+                  <span className="font-medium text-slate-900">{saleQuery.data.soldByEmployee.fullName}</span>
+                  <span className="text-slate-600">{saleQuery.data.soldByEmployee.employeeCode}</span>
+                </div>
+              ) : (
+                <span className="text-slate-500">{t("sales.detail.noSalesperson")}</span>
+              )}
+            </div>
             <div className="rounded-lg border border-slate-200 bg-white p-4">
-              <h2 className="mb-2 text-sm font-semibold text-slate-700">Payments</h2>
+              <h2 className="mb-2 text-sm font-semibold text-slate-700">{t("sales.detail.paymentsTitle")}</h2>
               <ul className="divide-y divide-slate-100 text-sm">
                 {saleQuery.data.payments.map((p) => (
                   <li key={p.id} className="flex justify-between py-1">
@@ -89,21 +124,21 @@ export function SaleDetailPage() {
               </ul>
             </div>
             <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm">
-              <h2 className="mb-2 text-sm font-semibold text-slate-700">Totals</h2>
+              <h2 className="mb-2 text-sm font-semibold text-slate-700">{t("sales.detail.totalsTitle")}</h2>
               <div className="flex justify-between py-1">
-                <span>Subtotal</span>
+                <span>{t("sales.detail.subtotalLabel")}</span>
                 <span>{currency(saleQuery.data.subtotal)}</span>
               </div>
               <div className="flex justify-between py-1">
-                <span>Discount</span>
+                <span>{t("sales.detail.discountLabel")}</span>
                 <span>-{currency(saleQuery.data.discountTotal)}</span>
               </div>
               <div className="flex justify-between py-1">
-                <span>Tax</span>
+                <span>{t("sales.detail.taxLabel")}</span>
                 <span>{currency(saleQuery.data.taxTotal)}</span>
               </div>
               <div className="flex justify-between border-t border-slate-100 py-1 font-semibold">
-                <span>Total</span>
+                <span>{t("sales.detail.totalLabel")}</span>
                 <span>{currency(saleQuery.data.total)}</span>
               </div>
             </div>
@@ -111,20 +146,20 @@ export function SaleDetailPage() {
 
           {canVoid && saleQuery.data.status === "COMPLETED" && (
             <div className="rounded-lg border border-red-200 bg-red-50 p-4">
-              <h2 className="mb-2 text-sm font-semibold text-red-800">Void this order</h2>
+              <h2 className="mb-2 text-sm font-semibold text-red-800">{t("sales.detail.voidSectionTitle")}</h2>
               <div className="flex gap-3">
                 <input
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
-                  placeholder="Reason (optional)"
+                  placeholder={t("sales.detail.voidReasonPlaceholder")}
                   className="flex-1 rounded-md border border-red-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-red-300"
                 />
                 <Button variant="danger" isLoading={voidMutation.isPending} onClick={() => voidMutation.mutate()}>
-                  Void order
+                  {t("sales.detail.voidButton")}
                 </Button>
               </div>
               {voidMutation.isError && (
-                <p className="mt-2 text-xs text-red-700">Could not void this order. Please try again.</p>
+                <p className="mt-2 text-xs text-red-700">{t("sales.detail.voidInlineError")}</p>
               )}
             </div>
           )}

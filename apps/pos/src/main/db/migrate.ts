@@ -2,6 +2,8 @@ import type BetterSqlite3 from "better-sqlite3";
 import migration0001Init from "./migrations/0001_init.sql?raw";
 import migration0002ProductImage from "./migrations/0002_product_image.sql?raw";
 import migration0003ReturnRefundMethod from "./migrations/0003_return_refund_method.sql?raw";
+import migration0004RemoveReorderPoint from "./migrations/0004_remove_reorder_point.sql?raw";
+import migration0005EmployeeSalesAttribution from "./migrations/0005_employee_sales_attribution.sql?raw";
 
 /**
  * Hand-written SQL migrations, applied in order and tracked in a
@@ -13,6 +15,8 @@ const MIGRATIONS: Array<{ name: string; sql: string }> = [
   { name: "0001_init", sql: migration0001Init },
   { name: "0002_product_image", sql: migration0002ProductImage },
   { name: "0003_return_refund_method", sql: migration0003ReturnRefundMethod },
+  { name: "0004_remove_reorder_point", sql: migration0004RemoveReorderPoint },
+  { name: "0005_employee_sales_attribution", sql: migration0005EmployeeSalesAttribution },
 ];
 
 export function runMigrations(sqlite: BetterSqlite3.Database): void {

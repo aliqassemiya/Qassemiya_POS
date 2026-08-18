@@ -2,6 +2,11 @@ import { z } from "zod";
 import { OrderSource } from "./enums";
 
 export const saleItemSchema = z.object({
+  // Client-generated (matches Order.id's own convention) so a return created
+  // offline — which references orderItemId — can always resolve to the
+  // exact same row once the sale has synced, instead of racing a
+  // server-assigned id it has no way to learn in advance.
+  id: z.string().uuid(),
   productVariantId: z.string().uuid(),
   quantity: z.number().int().positive(),
   unitPrice: z.number().nonnegative(),
@@ -23,6 +28,10 @@ export const createSaleSchema = z.object({
   id: z.string().uuid(),
   branchId: z.string().uuid(),
   cashierUserId: z.string().uuid(),
+  // Who gets credit for the sale — independent of cashierUserId (who was
+  // actually logged into the till). Optional: not every sale needs a
+  // specific salesperson picked.
+  soldByEmployeeId: z.string().uuid().optional().nullable(),
   customerId: z.string().uuid().optional().nullable(),
   source: z.nativeEnum(OrderSource).default(OrderSource.ADMIN),
   items: z.array(saleItemSchema).min(1),

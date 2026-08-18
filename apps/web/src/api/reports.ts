@@ -2,7 +2,6 @@ import { apiClient } from "@/lib/apiClient";
 import type {
   BalanceSheetReport,
   CashPositionReport,
-  LowStockReportRow,
   ProfitAndLossReport,
   SalesSummaryReport,
   TrialBalanceReport,
@@ -20,8 +19,14 @@ export async function getSalesSummary(query: {
   return data;
 }
 
-export async function getLowStockReport(query: { branchId?: string }): Promise<LowStockReportRow[]> {
-  const { data } = await apiClient.get<LowStockReportRow[]>("/reports/low-stock", { params: query });
+export interface SalesTrendReport {
+  from: string;
+  to: string;
+  days: Array<{ date: string; total: number; orderCount: number }>;
+}
+
+export async function getSalesTrend(query: { branchId?: string; from?: string; to?: string }): Promise<SalesTrendReport> {
+  const { data } = await apiClient.get<SalesTrendReport>("/reports/sales-trend", { params: query });
   return data;
 }
 

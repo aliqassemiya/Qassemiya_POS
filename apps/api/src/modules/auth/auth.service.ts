@@ -60,7 +60,7 @@ export class AuthService {
     if (employee.branchId !== device.branchId) {
       throw new UnauthorizedException("Employee does not belong to this device's branch");
     }
-    if (!employee.userId) {
+    if (!employee.userId || !employee.pinCodeHash) {
       throw new UnauthorizedException("Employee has no linked login account");
     }
 
