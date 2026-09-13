@@ -15,6 +15,14 @@ export const salesTrendQuerySchema = z.object({
 });
 export class SalesTrendQueryDto extends createZodDto(salesTrendQuerySchema) {}
 
+// No branchId — Shopify orders aren't attributable to a branch, so unlike
+// salesTrend this is always company-wide.
+export const onlineSalesTrendQuerySchema = z.object({
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
+});
+export class OnlineSalesTrendQueryDto extends createZodDto(onlineSalesTrendQuerySchema) {}
+
 export const vendorPerformanceQuerySchema = z.object({
   vendorId: z.string().uuid().optional(),
   branchId: z.string().uuid().optional(),
@@ -61,3 +69,12 @@ export const vatSummaryQuerySchema = z.object({
   to: z.string().datetime().optional(),
 });
 export class VatSummaryQueryDto extends createZodDto(vatSummaryQuerySchema) {}
+
+// branchId filters the in-store side only — the online (Shopify) side is
+// always company-wide, since ShopifyOrder has no branchId at all.
+export const channelComparisonQuerySchema = z.object({
+  branchId: z.string().uuid().optional(),
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
+});
+export class ChannelComparisonQueryDto extends createZodDto(channelComparisonQuerySchema) {}

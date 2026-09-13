@@ -271,7 +271,8 @@ model Customer {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  orders Order[]
+  orders        Order[]
+  shopifyOrders ShopifyOrder[]
 
   @@map("customers")
 }
@@ -369,6 +370,7 @@ model ProductVariant {
 
   purchaseOrderItems PurchaseOrderItem[]
   goodsReceiptItems  GoodsReceiptItem[]
+  shopifyOrderItems  ShopifyOrderItem[]
 
   @@index([productId])
   @@map("product_variants")
@@ -840,4 +842,122 @@ model Expense {
   @@index([branchId])
   @@index([categoryAccountId])
   @@map("expenses")
+}
+
+// ---------- Shopify Sync ----------
+// Deliberately separate from Order/OrderItem — Order.branchId/cashierUserId
+// are NOT NULL and createSaleTx unconditionally posts stock movements + GL
+// journal entries, so reusing that table would require a guard inside an
+// already-complex transaction. These tables have no code path into
+// stock_movements/inventory/journal_entries at all, making "Shopify orders
+// never touch inventory" true by construction, not by a flag.
+
+model ShopifyIntegration {
+  id                String    @id
+  shopDomain        String
+  accessTokenCipher String
+  accessTokenIv     String
+  accessTokenTag    String
+  apiVersion        String    @default("2024-10")
+  isActive          Boolean   @default(true)
+  syncFromDate      DateTime
+  // Last successful updated_at_min high-water mark; only advances once a
+  // full paginated run succeeds, so a run that dies mid-page resumes from
+  // the previous checkpoint instead of skipping ahead.
+  syncCursor        DateTime?
+  lastSyncedAt      DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@map("shopify_integrations")
+}
+
+// No branchId — online sales are company-wide, not branch-attributable.
+// No customer name/email/address — out of scope for a pure sales
+// comparison feature, avoids taking on PII exposure this doesn't need.
+model ShopifyOrder {
+  id                String    @id
+  shopifyOrderId    String    @unique
+  orderNumber       String
+  shopifyCreatedAt  DateTime
+  // Guards upserts: only overwrite if incoming shopifyUpdatedAt >= stored —
+  // protects against re-fetch races now and out-of-order webhook deliveries
+  // later, so this check is built once and reused by both.
+  shopifyUpdatedAt  DateTime
+  cancelledAt       DateTime?
+  financialStatus   String
+  currency          String
+  totalPrice        Decimal   @db.Decimal(12, 2)
+  // Shopify-computed total AFTER refunds/edits — reports use this, not
+  // totalPrice, so online figures are net like the in-store side is.
+  currentTotalPrice Decimal   @db.Decimal(12, 2)
+  // Order-detail breakdown, for the Online Orders detail view (matches
+  // Shopify's own order page: Subtotal/Discount/Shipping/Taxes/Total/Paid).
+  subtotalPrice     Decimal   @default(0) @db.Decimal(12, 2)
+  totalDiscounts    Decimal   @default(0) @db.Decimal(12, 2)
+  discountCodes     String? // comma-joined, e.g. "SHAC5"
+  totalShipping     Decimal   @default(0) @db.Decimal(12, 2)
+  shippingTitle     String?
+  totalTax          Decimal   @default(0) @db.Decimal(12, 2)
+  taxRate           Decimal?  @db.Decimal(5, 4) // e.g. 0.15 for 15% VAT
+  taxesIncluded     Boolean   @default(false)
+  totalOutstanding  Decimal   @default(0) @db.Decimal(12, 2) // Paid = currentTotalPrice - totalOutstanding
+  // Customer contact info — deliberately NOT captured in the original pass
+  // (pure sales-comparison scope), added because the Online Orders page
+  // needs to show who placed the order.
+  customerName      String?
+  customerPhone     String?
+  customerEmail     String?
+  // Resolved by matching customerPhone against Customer.phone (the existing
+  // unique identifier for customers in this system) at sync time — links
+  // this order to the same shared Customer record used by in-store sales,
+  // so the person shows up in the Customers screen without any new UI.
+  customerId        String?
+  rawPayload        Json?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  customer Customer?          @relation(fields: [customerId], references: [id])
+  items    ShopifyOrderItem[]
+
+  @@index([shopifyUpdatedAt])
+  @@index([customerId])
+  @@map("shopify_orders")
+}
+
+model ShopifyOrderItem {
+  id             String  @id
+  shopifyOrderId String
+  sku            String?
+  title          String
+  quantity       Int
+  unitPrice      Decimal @db.Decimal(12, 2)
+  lineTotal      Decimal @db.Decimal(12, 2)
+  // Set only when sku matches ProductVariant.sku at sync time — nullable by
+  // design so an order NEVER fails or gets skipped over an unmatched SKU.
+  productVariantId String?
+
+  order          ShopifyOrder    @relation(fields: [shopifyOrderId], references: [id], onDelete: Cascade)
+  productVariant ProductVariant? @relation(fields: [productVariantId], references: [id])
+
+  @@index([shopifyOrderId])
+  @@index([productVariantId])
+  @@map("shopify_order_items")
+}
+
+// An IN_PROGRESS row doubles as the overlap lock between the cron tick and a
+// manual "Sync now" click — no separate lock table needed.
+model ShopifySyncLog {
+  id             String    @id
+  startedAt      DateTime  @default(now())
+  finishedAt     DateTime?
+  status         String
+  triggeredBy    String
+  ordersFetched  Int       @default(0)
+  ordersUpserted Int       @default(0)
+  cursorFrom     DateTime?
+  cursorTo       DateTime?
+  errorMessage   String?
+
+  @@map("shopify_sync_logs")
 }

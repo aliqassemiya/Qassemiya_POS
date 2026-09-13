@@ -3,6 +3,8 @@ import { ReportsService } from "./reports.service";
 import {
   BalanceSheetQueryDto,
   CashFlowQueryDto,
+  ChannelComparisonQueryDto,
+  OnlineSalesTrendQueryDto,
   ProfitAndLossQueryDto,
   SalesSummaryQueryDto,
   SalesTrendQueryDto,
@@ -38,6 +40,18 @@ export class ReportsController {
   @Get("vendor-balances")
   vendorBalances(@Query() query: VendorBalancesQueryDto) {
     return this.reportsService.vendorBalances(query);
+  }
+
+  @Get("channel-comparison")
+  @RequirePermissions("reports.channel.view")
+  channelComparison(@Query() query: ChannelComparisonQueryDto) {
+    return this.reportsService.channelComparison(query);
+  }
+
+  @Get("online-sales-trend")
+  @RequirePermissions("reports.channel.view")
+  onlineSalesTrend(@Query() query: OnlineSalesTrendQueryDto) {
+    return this.reportsService.onlineSalesTrend(query);
   }
 
   // Financial reports below are gated by reports.financial.view (kept

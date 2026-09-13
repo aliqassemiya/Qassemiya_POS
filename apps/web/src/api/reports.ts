@@ -30,6 +30,12 @@ export async function getSalesTrend(query: { branchId?: string; from?: string; t
   return data;
 }
 
+// No branchId — Shopify orders aren't attributable to a branch, always company-wide.
+export async function getOnlineSalesTrend(query: { from?: string; to?: string }): Promise<SalesTrendReport> {
+  const { data } = await apiClient.get<SalesTrendReport>("/reports/online-sales-trend", { params: query });
+  return data;
+}
+
 export async function getVendorPerformanceReport(query: {
   vendorId?: string;
   branchId?: string;
@@ -42,6 +48,44 @@ export async function getVendorPerformanceReport(query: {
 
 export async function getVendorBalancesReport(query: { vendorId?: string } = {}): Promise<VendorBalanceRow[]> {
   const { data } = await apiClient.get<VendorBalanceRow[]>("/reports/vendor-balances", { params: query });
+  return data;
+}
+
+export interface ChannelComparisonSkuRow {
+  productVariantId: string;
+  sku: string;
+  productName: string;
+  inStoreQuantity: number;
+  inStoreRevenue: number;
+  onlineQuantity: number;
+  onlineRevenue: number;
+}
+
+export interface ChannelComparisonUnmatchedRow {
+  sku: string | null;
+  title: string;
+  quantity: number;
+  revenue: number;
+}
+
+export interface ChannelComparisonReport {
+  from?: string;
+  to?: string;
+  inStore: { orderCount: number; total: number };
+  online: { orderCount: number; total: number };
+  combined: number;
+  bySku: ChannelComparisonSkuRow[];
+  unmatchedShopifySkus: ChannelComparisonUnmatchedRow[];
+}
+
+// branchId only filters the in-store side — Shopify orders have no branch,
+// so the online figure returned here is always company-wide.
+export async function getChannelComparison(query: {
+  branchId?: string;
+  from?: string;
+  to?: string;
+}): Promise<ChannelComparisonReport> {
+  const { data } = await apiClient.get<ChannelComparisonReport>("/reports/channel-comparison", { params: query });
   return data;
 }
 

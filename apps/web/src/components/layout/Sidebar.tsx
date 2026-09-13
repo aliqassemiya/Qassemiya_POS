@@ -49,6 +49,15 @@ const FINANCE_NAV_ITEMS: NavItem[] = [
   { to: "/reports/financial", labelKey: "financeReports", anyOf: ["reports.financial.view"] },
 ];
 
+// Online sales (Shopify sync) — settings is SUPER_ADMIN-only (holds a live
+// external credential), browsing/comparison reuse the existing reports
+// permissions like every other report page does.
+const ONLINE_SALES_NAV_ITEMS: NavItem[] = [
+  { to: "/integrations/shopify", labelKey: "shopifySettings", anyOf: ["integrations.shopify.manage"] },
+  { to: "/integrations/shopify/orders", labelKey: "onlineOrders", anyOf: ["reports.view"] },
+  { to: "/reports/channel-comparison", labelKey: "channelComparison", anyOf: ["reports.channel.view"] },
+];
+
 const linkClasses = ({ isActive }: { isActive: boolean }) =>
   `block rounded-md px-3 py-2 text-sm font-medium transition-colors ${
     isActive ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100"
@@ -62,6 +71,9 @@ export function Sidebar() {
     (item) => !item.anyOf || item.anyOf.some((p) => (permissions as string[]).includes(p)),
   );
   const visibleFinanceItems = FINANCE_NAV_ITEMS.filter(
+    (item) => !item.anyOf || item.anyOf.some((p) => (permissions as string[]).includes(p)),
+  );
+  const visibleOnlineSalesItems = ONLINE_SALES_NAV_ITEMS.filter(
     (item) => !item.anyOf || item.anyOf.some((p) => (permissions as string[]).includes(p)),
   );
 
@@ -79,6 +91,18 @@ export function Sidebar() {
             {t("nav.financeSection")}
           </div>
           {visibleFinanceItems.map((item) => (
+            <NavLink key={item.to} to={item.to} className={linkClasses}>
+              {t(`nav.${item.labelKey}`)}
+            </NavLink>
+          ))}
+        </>
+      )}
+      {visibleOnlineSalesItems.length > 0 && (
+        <>
+          <div className="mb-1 mt-4 px-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            {t("nav.onlineSalesSection")}
+          </div>
+          {visibleOnlineSalesItems.map((item) => (
             <NavLink key={item.to} to={item.to} className={linkClasses}>
               {t(`nav.${item.labelKey}`)}
             </NavLink>

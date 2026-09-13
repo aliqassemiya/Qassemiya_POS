@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
+import { ScheduleModule } from "@nestjs/schedule";
 import { APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from "@nestjs/core";
 import { ZodValidationPipe } from "nestjs-zod";
 import { PrismaModule } from "./common/prisma/prisma.module";
@@ -27,10 +28,12 @@ import { PurchaseReturnsModule } from "./modules/purchase-returns/purchase-retur
 import { AccountsModule } from "./modules/accounts/accounts.module";
 import { JournalEntriesModule } from "./modules/journal-entries/journal-entries.module";
 import { ExpensesModule } from "./modules/expenses/expenses.module";
+import { ShopifyModule } from "./modules/shopify/shopify.module";
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ScheduleModule.forRoot(),
     PrismaModule,
     AuthModule,
     UsersModule,
@@ -54,6 +57,7 @@ import { ExpensesModule } from "./modules/expenses/expenses.module";
     AccountsModule,
     JournalEntriesModule,
     ExpensesModule,
+    ShopifyModule,
   ],
   providers: [
     { provide: APP_PIPE, useClass: ZodValidationPipe },

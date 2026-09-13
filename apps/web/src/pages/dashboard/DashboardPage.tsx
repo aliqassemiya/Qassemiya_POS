@@ -14,10 +14,11 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { getSalesSummary, getSalesTrend } from "@/api/reports";
+import { getOnlineSalesTrend, getSalesSummary, getSalesTrend } from "@/api/reports";
 import { useAuthStore } from "@/store/authStore";
 import { DataState } from "@/components/ui/DataState";
 import { endOfDayIso } from "@/lib/dateRange";
+import { useHasPermission } from "@/hooks/useHasPermission";
 
 type PresetKey = "today" | "yesterday" | "last7" | "last30" | "last90" | "last365" | "custom";
 
@@ -77,6 +78,7 @@ const PIE_COLORS = ["#0f172a", "#2563eb", "#16a34a", "#d97706", "#dc2626", "#7c3
 export function DashboardPage() {
   const { t } = useTranslation();
   const activeBranchId = useAuthStore((s) => s.activeBranchId);
+  const canViewOnlineSales = useHasPermission("reports.channel.view");
   const [preset, setPreset] = useState<PresetKey>("last7");
 
   // Anchored once per mount so a rolling-window preset (e.g. "today", whose
@@ -102,7 +104,14 @@ export function DashboardPage() {
     queryFn: () => getSalesTrend({ branchId: activeBranchId ?? undefined, from, to }),
   });
 
+  const onlineTrendQuery = useQuery({
+    queryKey: ["reports", "online-sales-trend", from, to],
+    queryFn: () => getOnlineSalesTrend({ from, to }),
+    enabled: canViewOnlineSales,
+  });
+
   const trendData = trendQuery.data?.days.map((d) => ({ ...d, label: shortDate(d.date) })) ?? [];
+  const onlineTrendData = onlineTrendQuery.data?.days.map((d) => ({ ...d, label: shortDate(d.date) })) ?? [];
   const paymentMethodData = summaryQuery.data?.byPaymentMethod.filter((p) => p.amount > 0) ?? [];
   const periodLabel = t(PRESET_KEYS.find((p) => p.key === preset)?.labelKey ?? "dashboard.presetToday");
 
@@ -227,6 +236,36 @@ export function DashboardPage() {
           </DataState>
         </div>
       </div>
+
+      {canViewOnlineSales && (
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <h2 className="mb-3 text-sm font-semibold text-slate-700">
+            {t("dashboard.onlineSalesTrend", { period: periodLabel })}
+          </h2>
+          <DataState
+            isLoading={onlineTrendQuery.isLoading}
+            isError={onlineTrendQuery.isError}
+            error={onlineTrendQuery.error}
+            isEmpty={onlineTrendData.every((d) => d.total === 0)}
+            emptyMessage={t("dashboard.emptyOnlineTrend")}
+          >
+            <div className="h-64 w-full" dir="ltr">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={onlineTrendData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                  <XAxis dataKey="label" fontSize={12} tickLine={false} />
+                  <YAxis fontSize={12} tickLine={false} width={70} tickFormatter={(v) => currency(v)} />
+                  <Tooltip
+                    formatter={(value) => currency(Number(value ?? 0))}
+                    labelFormatter={(label) => `${label}`}
+                  />
+                  <Bar dataKey="total" name="Online sales" fill="#2563eb" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </DataState>
+        </div>
+      )}
     </div>
   );
 }

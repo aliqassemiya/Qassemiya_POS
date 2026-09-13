@@ -3,6 +3,8 @@ import { PrismaService } from "../../common/prisma/prisma.service";
 import type {
   BalanceSheetQueryDto,
   CashFlowQueryDto,
+  ChannelComparisonQueryDto,
+  OnlineSalesTrendQueryDto,
   ProfitAndLossQueryDto,
   SalesSummaryQueryDto,
   SalesTrendQueryDto,
@@ -26,6 +28,17 @@ function typeBalance(type: string, debit: number, credit: number): number {
 function dateRangeWhere(from?: string, to?: string) {
   if (!from && !to) return {};
   return { entryDate: { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lte: new Date(to) } : {}) } };
+}
+
+// Shared by salesTrend and onlineSalesTrend — both the bucket keys AND the
+// enumerated-days keys MUST use this same day-derivation method. Mixing
+// `toISOString().slice(0, 10)` (UTC) with `setHours(0, 0, 0, 0)`
+// (server-local time) shifts the enumerated days a full calendar day behind
+// the order buckets for any server timezone ahead of UTC (e.g. Asia/Riyadh,
+// UTC+3) — every lookup then misses and the chart shows zero sales even
+// when orders exist.
+function dayKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 @Injectable()
@@ -96,7 +109,7 @@ export class ReportsService {
 
     const buckets = new Map<string, { total: number; orderCount: number }>();
     for (const order of orders) {
-      const day = order.createdAt.toISOString().slice(0, 10);
+      const day = dayKey(order.createdAt);
       const bucket = buckets.get(day) ?? { total: 0, orderCount: 0 };
       bucket.total += Number(order.total);
       bucket.orderCount += 1;
@@ -109,7 +122,51 @@ export class ReportsService {
     const endDay = new Date(to);
     endDay.setHours(0, 0, 0, 0);
     while (cursor <= endDay) {
-      const key = cursor.toISOString().slice(0, 10);
+      const key = dayKey(cursor);
+      const bucket = buckets.get(key) ?? { total: 0, orderCount: 0 };
+      days.push({ date: key, total: bucket.total, orderCount: bucket.orderCount });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    return { from: from.toISOString(), to: to.toISOString(), days };
+  }
+
+  /**
+   * Same day-bucketed shape as salesTrend, sourced from ShopifyOrder instead
+   * of Order — company-wide by construction (no branchId filter; Shopify
+   * orders aren't attributable to a branch). Uses currentTotalPrice (net of
+   * refunds/edits) and excludes cancelled/voided orders, matching
+   * channelComparison's online-total convention so the two stay consistent.
+   */
+  async onlineSalesTrend(query: OnlineSalesTrendQueryDto) {
+    const to = query.to ? new Date(query.to) : new Date();
+    const from = query.from ? new Date(query.from) : new Date(to.getTime() - 6 * 24 * 60 * 60 * 1000);
+
+    const orders = await this.prisma.shopifyOrder.findMany({
+      where: {
+        cancelledAt: null,
+        financialStatus: { not: "voided" },
+        shopifyCreatedAt: { gte: from, lte: to },
+      },
+      select: { shopifyCreatedAt: true, currentTotalPrice: true },
+    });
+
+    const buckets = new Map<string, { total: number; orderCount: number }>();
+    for (const order of orders) {
+      const day = dayKey(order.shopifyCreatedAt);
+      const bucket = buckets.get(day) ?? { total: 0, orderCount: 0 };
+      bucket.total += Number(order.currentTotalPrice);
+      bucket.orderCount += 1;
+      buckets.set(day, bucket);
+    }
+
+    const days: Array<{ date: string; total: number; orderCount: number }> = [];
+    const cursor = new Date(from);
+    cursor.setHours(0, 0, 0, 0);
+    const endDay = new Date(to);
+    endDay.setHours(0, 0, 0, 0);
+    while (cursor <= endDay) {
+      const key = dayKey(cursor);
       const bucket = buckets.get(key) ?? { total: 0, orderCount: 0 };
       days.push({ date: key, total: bucket.total, orderCount: bucket.orderCount });
       cursor.setDate(cursor.getDate() + 1);
@@ -199,6 +256,123 @@ export class ReportsService {
     return {
       byVendor: Array.from(byVendor.values()),
       byProduct: Array.from(byProduct.values()),
+    };
+  }
+
+  /**
+   * Online (Shopify) vs in-store (Order/OrderItem) sales, net of refunds on
+   * both sides — "fetch rows, reduce in JS" idiom, same as vendorPerformance
+   * above. In-store nets Order.total against that order's Σ
+   * Return.totalRefundAmount (VOIDED orders excluded entirely); online uses
+   * ShopifyOrder.currentTotalPrice, which Shopify itself already computes
+   * net of refunds/edits, excluding cancelled/voided orders. branchId only
+   * filters the in-store side — Shopify orders have no branch, so the
+   * online figure is always company-wide.
+   */
+  async channelComparison(query: ChannelComparisonQueryDto) {
+    const from = query.from ? new Date(query.from) : undefined;
+    const to = query.to ? new Date(query.to) : undefined;
+    const dateWhere = (field: string) =>
+      from || to ? { [field]: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {};
+
+    const orders = await this.prisma.order.findMany({
+      where: {
+        status: { not: "VOIDED" },
+        ...(query.branchId ? { branchId: query.branchId } : {}),
+        ...dateWhere("createdAt"),
+      },
+      select: {
+        id: true,
+        total: true,
+        items: { select: { productVariantId: true, quantity: true, lineTotal: true } },
+      },
+    });
+
+    const orderIds = orders.map((o) => o.id);
+    const returns = orderIds.length
+      ? await this.prisma.return.groupBy({
+          by: ["orderId"],
+          where: { orderId: { in: orderIds } },
+          _sum: { totalRefundAmount: true },
+        })
+      : [];
+    const refundByOrderId = new Map(returns.map((r) => [r.orderId, Number(r._sum.totalRefundAmount ?? 0)]));
+
+    let inStoreTotal = 0;
+    const inStoreByVariant = new Map<string, { quantity: number; revenue: number }>();
+    for (const order of orders) {
+      inStoreTotal += Number(order.total) - (refundByOrderId.get(order.id) ?? 0);
+      for (const item of order.items) {
+        const bucket = inStoreByVariant.get(item.productVariantId) ?? { quantity: 0, revenue: 0 };
+        bucket.quantity += item.quantity;
+        bucket.revenue += Number(item.lineTotal);
+        inStoreByVariant.set(item.productVariantId, bucket);
+      }
+    }
+
+    const shopifyOrders = await this.prisma.shopifyOrder.findMany({
+      where: { cancelledAt: null, financialStatus: { not: "voided" }, ...dateWhere("shopifyCreatedAt") },
+      select: {
+        id: true,
+        currentTotalPrice: true,
+        items: { select: { productVariantId: true, sku: true, title: true, quantity: true, lineTotal: true } },
+      },
+    });
+
+    let onlineTotal = 0;
+    const onlineByVariant = new Map<string, { quantity: number; revenue: number }>();
+    const unmatched = new Map<string, { sku: string | null; title: string; quantity: number; revenue: number }>();
+    for (const order of shopifyOrders) {
+      onlineTotal += Number(order.currentTotalPrice);
+      for (const item of order.items) {
+        const revenue = Number(item.lineTotal);
+        if (item.productVariantId) {
+          const bucket = onlineByVariant.get(item.productVariantId) ?? { quantity: 0, revenue: 0 };
+          bucket.quantity += item.quantity;
+          bucket.revenue += revenue;
+          onlineByVariant.set(item.productVariantId, bucket);
+        } else {
+          const key = item.sku ?? item.title;
+          const bucket = unmatched.get(key) ?? { sku: item.sku, title: item.title, quantity: 0, revenue: 0 };
+          bucket.quantity += item.quantity;
+          bucket.revenue += revenue;
+          unmatched.set(key, bucket);
+        }
+      }
+    }
+
+    const variantIds = new Set([...inStoreByVariant.keys(), ...onlineByVariant.keys()]);
+    const variants = variantIds.size
+      ? await this.prisma.productVariant.findMany({
+          where: { id: { in: Array.from(variantIds) } },
+          select: { id: true, sku: true, product: { select: { name: true } } },
+        })
+      : [];
+    const variantMap = new Map(variants.map((v) => [v.id, v]));
+
+    const bySku = Array.from(variantIds).map((variantId) => {
+      const variant = variantMap.get(variantId);
+      const inStore = inStoreByVariant.get(variantId) ?? { quantity: 0, revenue: 0 };
+      const online = onlineByVariant.get(variantId) ?? { quantity: 0, revenue: 0 };
+      return {
+        productVariantId: variantId,
+        sku: variant?.sku ?? variantId,
+        productName: variant?.product.name ?? "",
+        inStoreQuantity: inStore.quantity,
+        inStoreRevenue: inStore.revenue,
+        onlineQuantity: online.quantity,
+        onlineRevenue: online.revenue,
+      };
+    });
+
+    return {
+      from: from?.toISOString(),
+      to: to?.toISOString(),
+      inStore: { orderCount: orders.length, total: inStoreTotal },
+      online: { orderCount: shopifyOrders.length, total: onlineTotal },
+      combined: inStoreTotal + onlineTotal,
+      bySku,
+      unmatchedShopifySkus: Array.from(unmatched.values()),
     };
   }
 

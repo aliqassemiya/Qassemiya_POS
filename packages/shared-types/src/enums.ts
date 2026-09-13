@@ -127,5 +127,7 @@ export const PERMISSIONS = [
   "journal.manage",
   "expenses.manage",
   "reports.financial.view",
+  "integrations.shopify.manage",
+  "reports.channel.view",
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];

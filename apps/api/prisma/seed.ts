@@ -25,6 +25,7 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
     "purchases.return.create",
     "reports.financial.view",
     "expenses.manage",
+    "reports.channel.view",
   ],
   [RoleName.CASHIER]: ["pos.sale.create", "pos.return.create", "inventory.view", "customers.manage"],
   [RoleName.INVENTORY_CLERK]: ["inventory.view", "inventory.adjust", "catalog.manage", "reports.view", "purchases.receive"],

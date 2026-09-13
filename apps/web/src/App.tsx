@@ -34,6 +34,9 @@ import { JournalEntriesPage } from "@/pages/journal-entries/JournalEntriesPage";
 import { JournalEntryDetailPage } from "@/pages/journal-entries/JournalEntryDetailPage";
 import { ExpensesPage } from "@/pages/expenses/ExpensesPage";
 import { FinancialReportsPage } from "@/pages/reports/FinancialReportsPage";
+import { ShopifySettingsPage } from "@/pages/integrations/ShopifySettingsPage";
+import { OnlineOrdersPage } from "@/pages/integrations/OnlineOrdersPage";
+import { ChannelComparisonPage } from "@/pages/reports/ChannelComparisonPage";
 
 export default function App() {
   const setSession = useAuthStore((s) => s.setSession);
@@ -110,6 +113,9 @@ export default function App() {
           <Route path="/journal-entries/:id" element={<JournalEntryDetailPage />} />
           <Route path="/expenses" element={<ExpensesPage />} />
           <Route path="/reports/financial" element={<FinancialReportsPage />} />
+          <Route path="/integrations/shopify" element={<ShopifySettingsPage />} />
+          <Route path="/integrations/shopify/orders" element={<OnlineOrdersPage />} />
+          <Route path="/reports/channel-comparison" element={<ChannelComparisonPage />} />
         </Route>
       </Route>
 
