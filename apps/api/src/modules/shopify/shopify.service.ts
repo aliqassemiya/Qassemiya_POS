@@ -11,6 +11,7 @@ const DEFAULT_API_VERSION = "2024-10";
 const OVERLAP_LOCK_STALE_MS = 15 * 60 * 1000;
 const CURSOR_OVERLAP_BUFFER_MS = 2 * 60 * 1000;
 const RIYADH_OFFSET_MS = 3 * 60 * 60 * 1000;
+const TOKEN_ENC_KEY_VAR = "SHOPIFY_TOKEN_ENC_KEY";
 
 /**
  * 1st of the current month at Riyadh-local midnight — computed via a fixed
@@ -66,11 +67,14 @@ export class ShopifyService {
 
     const accessToken =
       dto.accessToken ??
-      decryptToken({
-        cipher: existing!.accessTokenCipher,
-        iv: existing!.accessTokenIv,
-        tag: existing!.accessTokenTag,
-      });
+      decryptToken(
+        {
+          cipher: existing!.accessTokenCipher,
+          iv: existing!.accessTokenIv,
+          tag: existing!.accessTokenTag,
+        },
+        TOKEN_ENC_KEY_VAR,
+      );
 
     // Validate before persisting so a bad domain/token combo surfaces
     // immediately in the settings UI instead of failing silently on the
@@ -81,7 +85,7 @@ export class ShopifyService {
     // and accessToken here is just the decrypted existing value) is
     // harmless — a fresh IV each save, same plaintext underneath — and
     // keeps the create/update data shapes simple and fully typed.
-    const encrypted = encryptToken(accessToken);
+    const encrypted = encryptToken(accessToken, TOKEN_ENC_KEY_VAR);
     const tokenFields = { accessTokenCipher: encrypted.cipher, accessTokenIv: encrypted.iv, accessTokenTag: encrypted.tag };
 
     if (existing) {
@@ -188,11 +192,14 @@ export class ShopifyService {
     });
 
     try {
-      const accessToken = decryptToken({
-        cipher: integration.accessTokenCipher,
-        iv: integration.accessTokenIv,
-        tag: integration.accessTokenTag,
-      });
+      const accessToken = decryptToken(
+        {
+          cipher: integration.accessTokenCipher,
+          iv: integration.accessTokenIv,
+          tag: integration.accessTokenTag,
+        },
+        TOKEN_ENC_KEY_VAR,
+      );
       const client = new ShopifyClient(integration.shopDomain, accessToken, integration.apiVersion);
       const rawOrders = await client.fetchOrdersUpdatedSince(cursorFrom.toISOString());
 

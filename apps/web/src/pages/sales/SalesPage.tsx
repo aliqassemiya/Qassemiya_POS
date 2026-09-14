@@ -165,7 +165,7 @@ export function SalesPage() {
                 <tr key={order.id}>
                   <td className="px-4 py-2 font-mono text-xs text-slate-600">
                     <Link to={`/sales/${order.id}`} className="hover:underline">
-                      #{order.id.slice(0, 8)}
+                      #{order.orderNumber ?? order.id.slice(0, 8)}
                     </Link>
                   </td>
                   <td className="px-4 py-2 text-slate-600">{new Date(order.createdAt).toLocaleString()}</td>

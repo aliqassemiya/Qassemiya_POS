@@ -3,11 +3,18 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { getSale, voidSale } from "@/api/sales";
+import { listWhatsAppMessageLogs, resendWhatsAppInvoice } from "@/api/whatsapp";
 import { DataState } from "@/components/ui/DataState";
 import { Button } from "@/components/ui/Button";
 import { useHasPermission } from "@/hooks/useHasPermission";
 import { toast } from "@/store/toastStore";
 import { getErrorMessage } from "@/lib/errorMessage";
+
+const WHATSAPP_STATUS_CLASSES: Record<string, string> = {
+  SENT: "bg-green-100 text-green-700",
+  FAILED: "bg-red-100 text-red-700",
+  SKIPPED: "bg-slate-100 text-slate-600",
+};
 
 function currency(n: number) {
   return new Intl.NumberFormat("en-SA", { style: "currency", currency: "SAR" }).format(n);
@@ -19,9 +26,14 @@ export function SaleDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const canVoid = useHasPermission("pos.sale.void");
+  const canManageWhatsApp = useHasPermission("integrations.whatsapp.manage");
   const [reason, setReason] = useState("");
 
   const saleQuery = useQuery({ queryKey: ["sales", id], queryFn: () => getSale(id as string) });
+  const whatsappLogsQuery = useQuery({
+    queryKey: ["whatsapp", "message-logs", id],
+    queryFn: () => listWhatsAppMessageLogs(id as string),
+  });
 
   const voidMutation = useMutation({
     mutationFn: () => voidSale(id as string, reason || undefined),
@@ -33,6 +45,18 @@ export function SaleDetailPage() {
     onError: (err) => toast.error(getErrorMessage(err, t("sales.detail.voidFailed"))),
   });
 
+  const resendMutation = useMutation({
+    mutationFn: () => resendWhatsAppInvoice(id as string),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["whatsapp", "message-logs", id] });
+      toast.success(t("sales.detail.whatsappResent"));
+    },
+    onError: (err) => toast.error(getErrorMessage(err, t("sales.detail.whatsappResendFailed"))),
+  });
+
+  const latestWhatsAppLog = whatsappLogsQuery.data?.[0];
+  const invoiceUrl = id ? `${import.meta.env.VITE_API_URL}/invoices/${id}` : "";
+
   return (
     <DataState isLoading={saleQuery.isLoading} isError={saleQuery.isError} error={saleQuery.error}>
       {saleQuery.data && (
@@ -43,7 +67,7 @@ export function SaleDetailPage() {
                 {t("sales.detail.back")}
               </button>
               <h1 className="text-2xl font-bold text-slate-900">
-                {t("sales.detail.orderTitle", { id: saleQuery.data.id.slice(0, 8) })}
+                {t("sales.detail.orderTitle", { id: saleQuery.data.orderNumber ?? saleQuery.data.id.slice(0, 8) })}
               </h1>
               <p className="text-sm text-slate-500">
                 {new Date(saleQuery.data.createdAt).toLocaleString()} · {saleQuery.data.branch?.name ?? "—"} ·{" "}
@@ -142,6 +166,52 @@ export function SaleDetailPage() {
                 <span>{currency(saleQuery.data.total)}</span>
               </div>
             </div>
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-white p-4">
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-slate-700">{t("sales.detail.whatsappTitle")}</h2>
+              {canManageWhatsApp && (
+                <Button
+                  variant="secondary"
+                  isLoading={resendMutation.isPending}
+                  onClick={() => resendMutation.mutate()}
+                >
+                  {t("sales.detail.whatsappResend")}
+                </Button>
+              )}
+            </div>
+            <DataState
+              isLoading={whatsappLogsQuery.isLoading}
+              isError={whatsappLogsQuery.isError}
+              error={whatsappLogsQuery.error}
+            >
+              <div className="flex flex-col gap-2 text-sm">
+                {latestWhatsAppLog ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${WHATSAPP_STATUS_CLASSES[latestWhatsAppLog.status] ?? "bg-slate-100 text-slate-600"}`}
+                    >
+                      {latestWhatsAppLog.status}
+                    </span>
+                    <span className="text-slate-500">{new Date(latestWhatsAppLog.createdAt).toLocaleString()}</span>
+                    {latestWhatsAppLog.customerPhone && (
+                      <span className="text-slate-500" dir="ltr">
+                        {latestWhatsAppLog.customerPhone}
+                      </span>
+                    )}
+                    {latestWhatsAppLog.errorMessage && (
+                      <span className="text-red-600">{latestWhatsAppLog.errorMessage}</span>
+                    )}
+                  </div>
+                ) : (
+                  <span className="text-slate-500">{t("sales.detail.whatsappNoAttempt")}</span>
+                )}
+                <a href={invoiceUrl} target="_blank" rel="noreferrer" className="text-slate-900 underline">
+                  {t("sales.detail.whatsappViewInvoice")}
+                </a>
+              </div>
+            </DataState>
           </div>
 
           {canVoid && saleQuery.data.status === "COMPLETED" && (

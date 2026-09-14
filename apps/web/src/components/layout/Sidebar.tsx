@@ -49,13 +49,20 @@ const FINANCE_NAV_ITEMS: NavItem[] = [
   { to: "/reports/financial", labelKey: "financeReports", anyOf: ["reports.financial.view"] },
 ];
 
-// Online sales (Shopify sync) — settings is SUPER_ADMIN-only (holds a live
-// external credential), browsing/comparison reuse the existing reports
-// permissions like every other report page does.
+// Online sales reporting (Shopify sync data) — separate from the
+// "Integrations" section below, which is for connecting/configuring a
+// channel rather than viewing its data. Browsing/comparison reuse the
+// existing reports permissions like every other report page does.
 const ONLINE_SALES_NAV_ITEMS: NavItem[] = [
-  { to: "/integrations/shopify", labelKey: "shopifySettings", anyOf: ["integrations.shopify.manage"] },
   { to: "/integrations/shopify/orders", labelKey: "onlineOrders", anyOf: ["reports.view"] },
   { to: "/reports/channel-comparison", labelKey: "channelComparison", anyOf: ["reports.channel.view"] },
+];
+
+// Connecting/configuring an external channel — each is SUPER_ADMIN-only
+// (holds a live external credential).
+const INTEGRATIONS_NAV_ITEMS: NavItem[] = [
+  { to: "/integrations/shopify", labelKey: "shopifySettings", anyOf: ["integrations.shopify.manage"] },
+  { to: "/integrations/whatsapp", labelKey: "whatsappSettings", anyOf: ["integrations.whatsapp.manage"] },
 ];
 
 const linkClasses = ({ isActive }: { isActive: boolean }) =>
@@ -74,6 +81,9 @@ export function Sidebar() {
     (item) => !item.anyOf || item.anyOf.some((p) => (permissions as string[]).includes(p)),
   );
   const visibleOnlineSalesItems = ONLINE_SALES_NAV_ITEMS.filter(
+    (item) => !item.anyOf || item.anyOf.some((p) => (permissions as string[]).includes(p)),
+  );
+  const visibleIntegrationsItems = INTEGRATIONS_NAV_ITEMS.filter(
     (item) => !item.anyOf || item.anyOf.some((p) => (permissions as string[]).includes(p)),
   );
 
@@ -103,6 +113,18 @@ export function Sidebar() {
             {t("nav.onlineSalesSection")}
           </div>
           {visibleOnlineSalesItems.map((item) => (
+            <NavLink key={item.to} to={item.to} className={linkClasses}>
+              {t(`nav.${item.labelKey}`)}
+            </NavLink>
+          ))}
+        </>
+      )}
+      {visibleIntegrationsItems.length > 0 && (
+        <>
+          <div className="mb-1 mt-4 px-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            {t("nav.integrationsSection")}
+          </div>
+          {visibleIntegrationsItems.map((item) => (
             <NavLink key={item.to} to={item.to} className={linkClasses}>
               {t(`nav.${item.labelKey}`)}
             </NavLink>

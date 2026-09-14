@@ -156,6 +156,7 @@ export interface Payment {
 
 export interface Order {
   id: string;
+  orderNumber?: string | null;
   branchId: string;
   branch?: Branch;
   cashierUserId: string;

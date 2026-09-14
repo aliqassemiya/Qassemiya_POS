@@ -1,8 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { ConflictException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../common/prisma/prisma.service";
 import { applyStockMovement } from "../../common/inventory/stock-ledger";
 import { postJournalEntry, resolveAccountIdByCode, resolvePaymentAccountId } from "../../common/accounting/journal-ledger";
 import { newId } from "../../common/utils/uuid";
+import { WhatsappService } from "../whatsapp/whatsapp.service";
 import type { CreateSaleInput } from "@qassemiya/shared-types";
 import type { CreateSaleDto, SalesListQueryDto, VoidSaleDto } from "./sales.dto";
 
@@ -18,7 +19,12 @@ const WITH_DETAILS = {
 
 @Injectable()
 export class SalesService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(SalesService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly whatsappService: WhatsappService,
+  ) {}
 
   async findAll(query: SalesListQueryDto) {
     const where = {
@@ -86,6 +92,24 @@ export class SalesService {
   /** Shared by the direct REST endpoint and the sync module. Caller must have already checked for id collisions if idempotency matters. */
   async createSaleTx(input: CreateSaleInput, clientCreatedAt?: Date) {
     await this.prisma.$transaction(async (tx) => {
+      // Human-friendly sequential invoice number: branch.code + an 8-digit
+      // zero-padded per-branch counter (e.g. "20100000020"). Assigned here,
+      // at commit time, because it's the one place both the direct REST path
+      // and the POS-sync path funnel through — an offline till can't safely
+      // self-assign a no-gaps number. The upsert is atomic under concurrent
+      // transactions (Postgres compiles it to INSERT ... ON CONFLICT DO
+      // UPDATE, which resolves races at the row level).
+      const branch = await tx.branch.findUniqueOrThrow({
+        where: { id: input.branchId },
+        select: { code: true },
+      });
+      const sequence = await tx.branchOrderSequence.upsert({
+        where: { branchId: input.branchId },
+        create: { branchId: input.branchId, lastNumber: 1 },
+        update: { lastNumber: { increment: 1 } },
+      });
+      const orderNumber = `${branch.code}${String(sequence.lastNumber).padStart(8, "0")}`;
+
       await tx.order.create({
         data: {
           id: input.id,
@@ -94,6 +118,7 @@ export class SalesService {
           soldByEmployeeId: input.soldByEmployeeId ?? undefined,
           customerId: input.customerId ?? undefined,
           source: input.source,
+          orderNumber,
           subtotal: input.subtotal,
           discountTotal: input.discountTotal,
           taxTotal: input.taxTotal,
@@ -186,6 +211,14 @@ export class SalesService {
         createdByUserId: input.cashierUserId,
         lines,
       });
+    });
+
+    // Fire-and-forget, deliberately not awaited — a WhatsApp/network failure
+    // must never fail the sale itself or turn a successful POS sync bundle
+    // into an error result. sendInvoiceForOrder never throws (it logs every
+    // outcome internally), so this .catch() is just a last-resort net.
+    this.whatsappService.sendInvoiceForOrder(input.id).catch((err) => {
+      this.logger.error(`WhatsApp invoice send failed for order ${input.id}: ${err}`);
     });
   }
 
