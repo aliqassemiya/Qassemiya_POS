@@ -1,5 +1,6 @@
 import { apiClient } from "@/lib/apiClient";
 import type { Order } from "@/types/entities";
+import type { PaginatedResult } from "./pagination";
 
 export interface SalesQuery {
   branchId?: string;
@@ -7,10 +8,19 @@ export interface SalesQuery {
   soldByEmployeeId?: string;
   from?: string;
   to?: string;
+  /** Matches the order number shown in the UI (id's first 8 chars) OR any line item's SKU. */
+  search?: string;
+  page?: number;
+  pageSize?: number;
 }
 
-export async function listSales(query: SalesQuery): Promise<Order[]> {
-  const { data } = await apiClient.get<Order[]>("/sales", { params: query });
+// totalAmount sums ALL orders matching the filters, not just the current page.
+export interface SalesListResult extends PaginatedResult<Order> {
+  totalAmount: number;
+}
+
+export async function listSales(query: SalesQuery): Promise<SalesListResult> {
+  const { data } = await apiClient.get<SalesListResult>("/sales", { params: query });
   return data;
 }
 

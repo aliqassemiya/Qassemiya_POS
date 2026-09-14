@@ -1,5 +1,6 @@
 import { apiClient } from "@/lib/apiClient";
 import type { PurchaseReturn } from "@/types/entities";
+import type { PaginatedResult } from "./pagination";
 
 // No shared-types schema exists for PurchaseReturn yet — see the note atop
 // types/entities.ts. Mirrors Return/ReturnItem 1:1 per the plan, but always
@@ -23,10 +24,12 @@ export interface CreatePurchaseReturnInput {
 export interface PurchaseReturnsQuery {
   purchaseOrderId?: string;
   branchId?: string;
+  page?: number;
+  pageSize?: number;
 }
 
-export async function listPurchaseReturns(query: PurchaseReturnsQuery = {}): Promise<PurchaseReturn[]> {
-  const { data } = await apiClient.get<PurchaseReturn[]>("/purchase-returns", { params: query });
+export async function listPurchaseReturns(query: PurchaseReturnsQuery = {}): Promise<PaginatedResult<PurchaseReturn>> {
+  const { data } = await apiClient.get<PaginatedResult<PurchaseReturn>>("/purchase-returns", { params: query });
   return data;
 }
 

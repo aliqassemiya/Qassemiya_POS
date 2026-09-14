@@ -25,5 +25,7 @@ export const shopifyOrderListQuerySchema = z.object({
   from: z.string().datetime().optional(),
   to: z.string().datetime().optional(),
   unmatchedOnly: z.coerce.boolean().optional(),
+  // Matches order number (e.g. "#1001" or just "1001") OR any line item's SKU.
+  search: z.string().trim().optional(),
 });
 export class ShopifyOrderListQueryDto extends createZodDto(shopifyOrderListQuerySchema) {}

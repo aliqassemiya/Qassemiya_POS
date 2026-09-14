@@ -11,6 +11,9 @@ export const salesListQuerySchema = z.object({
   paymentMethodId: z.string().uuid().optional(),
   from: z.string().datetime().optional(),
   to: z.string().datetime().optional(),
+  // Matches the order number shown in the UI (the id's first 8 chars, e.g.
+  // "a1b2c3d4") OR any line item's SKU.
+  search: z.string().trim().optional(),
   page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(200).default(50),
 });

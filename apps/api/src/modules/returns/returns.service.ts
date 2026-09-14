@@ -13,15 +13,22 @@ const WITH_DETAILS = { items: { include: { orderItem: true } } } as const;
 export class ReturnsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll(query: ReturnsListQueryDto) {
-    return this.prisma.return.findMany({
-      where: {
-        ...(query.branchId ? { branchId: query.branchId } : {}),
-        ...(query.orderId ? { orderId: query.orderId } : {}),
-      },
-      include: WITH_DETAILS,
-      orderBy: { createdAt: "desc" },
-    });
+  async findAll(query: ReturnsListQueryDto) {
+    const where = {
+      ...(query.branchId ? { branchId: query.branchId } : {}),
+      ...(query.orderId ? { orderId: query.orderId } : {}),
+    };
+    const [data, totalCount] = await Promise.all([
+      this.prisma.return.findMany({
+        where,
+        include: WITH_DETAILS,
+        orderBy: { createdAt: "desc" },
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+      }),
+      this.prisma.return.count({ where }),
+    ]);
+    return { data, totalCount };
   }
 
   async findOne(id: string) {

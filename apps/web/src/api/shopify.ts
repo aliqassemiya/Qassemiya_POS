@@ -49,6 +49,15 @@ export interface ShopifyRunSyncResult {
   ordersUpserted?: number;
 }
 
+export interface ShopifySyncLogEntry {
+  id: string;
+  syncLogId: string;
+  shopifyOrderId: string;
+  orderNumber: string;
+  action: "CREATED" | "UPDATED";
+  createdAt: string;
+}
+
 export interface ShopifyOrderItem {
   id: string;
   sku: string | null;
@@ -91,6 +100,8 @@ export interface ShopifyOrderListQuery {
   from?: string;
   to?: string;
   unmatchedOnly?: boolean;
+  /** Matches order number (e.g. "#1001" or "1001") OR any line item's SKU. */
+  search?: string;
 }
 
 export async function getShopifyIntegration(): Promise<ShopifyIntegrationStatus | null> {
@@ -118,6 +129,11 @@ export async function runShopifySync(): Promise<ShopifyRunSyncResult> {
 
 export async function listShopifySyncLogs(): Promise<ShopifySyncLog[]> {
   const { data } = await apiClient.get<ShopifySyncLog[]>("/shopify/sync/logs");
+  return data;
+}
+
+export async function getShopifySyncLogEntries(syncLogId: string): Promise<ShopifySyncLogEntry[]> {
+  const { data } = await apiClient.get<ShopifySyncLogEntry[]>(`/shopify/sync/logs/${syncLogId}/entries`);
   return data;
 }
 

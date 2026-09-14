@@ -1,5 +1,6 @@
 import { apiClient } from "@/lib/apiClient";
 import type { Customer } from "@/types/entities";
+import type { PaginatedResult } from "./pagination";
 
 export interface CustomerInput {
   fullName: string;
@@ -8,8 +9,14 @@ export interface CustomerInput {
   notes?: string;
 }
 
-export async function listCustomers(search?: string): Promise<Customer[]> {
-  const { data } = await apiClient.get<Customer[]>("/customers", { params: { search } });
+export interface CustomersQuery {
+  search?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export async function listCustomers(query: CustomersQuery = {}): Promise<PaginatedResult<Customer>> {
+  const { data } = await apiClient.get<PaginatedResult<Customer>>("/customers", { params: query });
   return data;
 }
 

@@ -1,5 +1,6 @@
 import { apiClient } from "@/lib/apiClient";
 import type { PurchaseInvoice, PurchaseInvoiceStatus } from "@/types/entities";
+import type { PaginatedResult } from "./pagination";
 
 // No shared-types schema exists for PurchaseInvoice yet — see the note atop
 // types/entities.ts.
@@ -18,10 +19,12 @@ export interface CreatePurchaseInvoiceInput {
 export interface PurchaseInvoicesQuery {
   vendorId?: string;
   status?: PurchaseInvoiceStatus;
+  page?: number;
+  pageSize?: number;
 }
 
-export async function listPurchaseInvoices(query: PurchaseInvoicesQuery = {}): Promise<PurchaseInvoice[]> {
-  const { data } = await apiClient.get<PurchaseInvoice[]>("/purchase-invoices", { params: query });
+export async function listPurchaseInvoices(query: PurchaseInvoicesQuery = {}): Promise<PaginatedResult<PurchaseInvoice>> {
+  const { data } = await apiClient.get<PaginatedResult<PurchaseInvoice>>("/purchase-invoices", { params: query });
   return data;
 }
 

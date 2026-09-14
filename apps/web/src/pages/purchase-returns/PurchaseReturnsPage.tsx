@@ -8,11 +8,14 @@ import { DataState } from "@/components/ui/DataState";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/TextField";
+import { Pagination } from "@/components/ui/Pagination";
 import { useAuthStore } from "@/store/authStore";
 import { useHasPermission } from "@/hooks/useHasPermission";
 import { toast } from "@/store/toastStore";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { randomUUID } from "@/lib/uuid";
+
+const PAGE_SIZE = 20;
 
 function currency(n: number) {
   return new Intl.NumberFormat("en-SA", { style: "currency", currency: "SAR" }).format(n);
@@ -168,8 +171,14 @@ export function PurchaseReturnsPage() {
   const canCreate = useHasPermission("purchases.return.create");
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
+  const [page, setPage] = useState(1);
 
-  const returnsQuery = useQuery({ queryKey: ["purchase-returns"], queryFn: () => listPurchaseReturns() });
+  const returnsQuery = useQuery({
+    queryKey: ["purchase-returns", page],
+    queryFn: () => listPurchaseReturns({ page, pageSize: PAGE_SIZE }),
+  });
+  const purchaseReturns = returnsQuery.data?.data ?? [];
+  const totalCount = returnsQuery.data?.totalCount ?? 0;
 
   return (
     <div className="flex flex-col gap-4">
@@ -183,7 +192,7 @@ export function PurchaseReturnsPage() {
           isLoading={returnsQuery.isLoading}
           isError={returnsQuery.isError}
           error={returnsQuery.error}
-          isEmpty={(returnsQuery.data?.length ?? 0) === 0}
+          isEmpty={purchaseReturns.length === 0}
           emptyMessage={t("purchaseReturns.empty")}
         >
           <table className="w-full text-left text-sm">
@@ -197,7 +206,7 @@ export function PurchaseReturnsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {returnsQuery.data?.map((r) => (
+              {purchaseReturns.map((r) => (
                 <tr key={r.id}>
                   <td className="px-4 py-2 text-slate-600">{new Date(r.createdAt).toLocaleString()}</td>
                   <td className="px-4 py-2 text-slate-600">{r.purchaseOrderId.slice(0, 8)}</td>
@@ -210,6 +219,8 @@ export function PurchaseReturnsPage() {
           </table>
         </DataState>
       </div>
+
+      <Pagination page={page} pageSize={PAGE_SIZE} totalCount={totalCount} onPageChange={setPage} />
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={t("purchaseReturns.newPurchaseReturn")}>
         <NewPurchaseReturnForm

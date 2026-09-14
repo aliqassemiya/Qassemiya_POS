@@ -10,9 +10,12 @@ import { DataState } from "@/components/ui/DataState";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/TextField";
+import { Pagination } from "@/components/ui/Pagination";
 import { useHasPermission } from "@/hooks/useHasPermission";
 import { toast } from "@/store/toastStore";
 import { getErrorMessage } from "@/lib/errorMessage";
+
+const PAGE_SIZE = 50;
 
 // No shared-types schema exists for Customer yet — kept local, mirroring the
 // Customer model fields described in the plan.
@@ -65,9 +68,15 @@ export function CustomersPage() {
   const canManage = useHasPermission("customers.manage");
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const [modalState, setModalState] = useState<{ open: boolean; customer?: Customer }>({ open: false });
 
-  const customersQuery = useQuery({ queryKey: ["customers", search], queryFn: () => listCustomers(search || undefined) });
+  const customersQuery = useQuery({
+    queryKey: ["customers", search, page],
+    queryFn: () => listCustomers({ search: search || undefined, page, pageSize: PAGE_SIZE }),
+  });
+  const customers = customersQuery.data?.data ?? [];
+  const totalCount = customersQuery.data?.totalCount ?? 0;
 
   const createMutation = useMutation({
     mutationFn: createCustomer,
@@ -98,7 +107,10 @@ export function CustomersPage() {
 
       <input
         value={search}
-        onChange={(e) => setSearch(e.target.value)}
+        onChange={(e) => {
+          setPage(1);
+          setSearch(e.target.value);
+        }}
         placeholder={t("customers.searchPlaceholder")}
         className="w-72 rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
       />
@@ -108,7 +120,7 @@ export function CustomersPage() {
           isLoading={customersQuery.isLoading}
           isError={customersQuery.isError}
           error={customersQuery.error}
-          isEmpty={(customersQuery.data?.length ?? 0) === 0}
+          isEmpty={customers.length === 0}
           emptyMessage={t("customers.empty")}
         >
           <table className="w-full text-left text-sm">
@@ -121,7 +133,7 @@ export function CustomersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {customersQuery.data?.map((c) => (
+              {customers.map((c) => (
                 <tr key={c.id}>
                   <td className="px-4 py-2 font-medium text-slate-900">{c.fullName}</td>
                   <td className="px-4 py-2 text-slate-600">{c.phone ?? "—"}</td>
@@ -139,6 +151,8 @@ export function CustomersPage() {
           </table>
         </DataState>
       </div>
+
+      <Pagination page={page} pageSize={PAGE_SIZE} totalCount={totalCount} onPageChange={setPage} />
 
       <Modal
         open={modalState.open}

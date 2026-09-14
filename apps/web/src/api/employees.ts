@@ -1,6 +1,7 @@
 import type { RoleName } from "@qassemiya/shared-types";
 import { apiClient } from "@/lib/apiClient";
 import type { Employee } from "@/types/entities";
+import type { PaginatedResult } from "./pagination";
 
 export interface EmployeeInput {
   employeeCode: string;
@@ -14,8 +15,14 @@ export interface EmployeeInput {
   isActive?: boolean;
 }
 
-export async function listEmployees(branchId?: string): Promise<Employee[]> {
-  const { data } = await apiClient.get<Employee[]>("/employees", { params: { branchId } });
+export interface EmployeesQuery {
+  branchId?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export async function listEmployees(query: EmployeesQuery = {}): Promise<PaginatedResult<Employee>> {
+  const { data } = await apiClient.get<PaginatedResult<Employee>>("/employees", { params: query });
   return data;
 }
 

@@ -13,8 +13,11 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/TextField";
 import { SelectField } from "@/components/ui/SelectField";
+import { Pagination } from "@/components/ui/Pagination";
 import { toast } from "@/store/toastStore";
 import { getErrorMessage } from "@/lib/errorMessage";
+
+const PAGE_SIZE = 50;
 
 interface EmployeeFormValues {
   employeeCode: string;
@@ -209,8 +212,14 @@ export function EmployeesPage() {
   const queryClient = useQueryClient();
   const [formModal, setFormModal] = useState<{ open: boolean; employee?: Employee }>({ open: false });
   const [pinModalEmployee, setPinModalEmployee] = useState<Employee | null>(null);
+  const [page, setPage] = useState(1);
 
-  const employeesQuery = useQuery({ queryKey: ["employees"], queryFn: () => listEmployees() });
+  const employeesQuery = useQuery({
+    queryKey: ["employees", page],
+    queryFn: () => listEmployees({ page, pageSize: PAGE_SIZE }),
+  });
+  const employees = employeesQuery.data?.data ?? [];
+  const totalCount = employeesQuery.data?.totalCount ?? 0;
 
   const createMutation = useMutation({
     mutationFn: createEmployee,
@@ -244,7 +253,7 @@ export function EmployeesPage() {
           isLoading={employeesQuery.isLoading}
           isError={employeesQuery.isError}
           error={employeesQuery.error}
-          isEmpty={(employeesQuery.data?.length ?? 0) === 0}
+          isEmpty={employees.length === 0}
           emptyMessage={t("employees.empty")}
         >
           <table className="w-full text-left text-sm">
@@ -260,7 +269,7 @@ export function EmployeesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {employeesQuery.data?.map((emp) => (
+              {employees.map((emp) => (
                 <tr key={emp.id}>
                   <td className="px-4 py-2 font-medium text-slate-900">{emp.fullName}</td>
                   <td className="px-4 py-2 text-slate-600">{emp.employeeCode}</td>
@@ -294,6 +303,8 @@ export function EmployeesPage() {
           </table>
         </DataState>
       </div>
+
+      <Pagination page={page} pageSize={PAGE_SIZE} totalCount={totalCount} onPageChange={setPage} />
 
       <Modal
         open={formModal.open}

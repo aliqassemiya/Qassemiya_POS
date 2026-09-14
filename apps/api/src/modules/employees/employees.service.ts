@@ -4,7 +4,7 @@ import { randomBytes } from "node:crypto";
 import type { RoleName } from "@qassemiya/shared-types";
 import { PrismaService } from "../../common/prisma/prisma.service";
 import { newId } from "../../common/utils/uuid";
-import type { CreateEmployeeDto, ResetPinDto, UpdateEmployeeDto } from "./employees.dto";
+import type { CreateEmployeeDto, EmployeeListQueryDto, ResetPinDto, UpdateEmployeeDto } from "./employees.dto";
 
 const SELECT = {
   id: true,
@@ -22,13 +22,20 @@ const SELECT = {
 export class EmployeesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(branchId?: string) {
-    const employees = await this.prisma.employee.findMany({
-      where: branchId ? { branchId } : undefined,
-      select: SELECT,
-      orderBy: { fullName: "asc" },
-    });
-    return Promise.all(employees.map((e) => this.withRoles(e)));
+  async findAll(query: EmployeeListQueryDto) {
+    const where = query.branchId ? { branchId: query.branchId } : undefined;
+    const [employees, totalCount] = await Promise.all([
+      this.prisma.employee.findMany({
+        where,
+        select: SELECT,
+        orderBy: { fullName: "asc" },
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+      }),
+      this.prisma.employee.count({ where }),
+    ]);
+    const data = await Promise.all(employees.map((e) => this.withRoles(e)));
+    return { data, totalCount };
   }
 
   async findOne(id: string) {

@@ -919,6 +919,7 @@ model ShopifyOrder {
 
   customer Customer?          @relation(fields: [customerId], references: [id])
   items    ShopifyOrderItem[]
+  syncLogEntries ShopifySyncLogEntry[]
 
   @@index([shopifyUpdatedAt])
   @@index([customerId])
@@ -959,5 +960,26 @@ model ShopifySyncLog {
   cursorTo       DateTime?
   errorMessage   String?
 
+  entries ShopifySyncLogEntry[]
+
   @@map("shopify_sync_logs")
+}
+
+// Per-run audit trail: which specific orders were created vs updated by a
+// given sync run, so "Orders (upserted / fetched)" can be drilled into
+// instead of being just a count. orderNumber is denormalized (not just the
+// FK) so the settings page can list entries without an extra join.
+model ShopifySyncLogEntry {
+  id             String   @id
+  syncLogId      String
+  shopifyOrderId String
+  orderNumber    String
+  action         String // CREATED | UPDATED
+  createdAt      DateTime @default(now())
+
+  syncLog     ShopifySyncLog @relation(fields: [syncLogId], references: [id], onDelete: Cascade)
+  shopifyOrder ShopifyOrder  @relation(fields: [shopifyOrderId], references: [id], onDelete: Cascade)
+
+  @@index([syncLogId])
+  @@map("shopify_sync_log_entries")
 }

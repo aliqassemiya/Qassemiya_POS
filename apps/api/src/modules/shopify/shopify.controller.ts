@@ -39,6 +39,11 @@ export class ShopifyController {
     return this.shopifyService.getSyncLogs();
   }
 
+  @Get("sync/logs/:id/entries")
+  getSyncLogEntries(@Param("id") id: string) {
+    return this.shopifyService.getSyncLogEntries(id);
+  }
+
   @Get("orders")
   @RequirePermissions("reports.view")
   findOrders(@Query() query: ShopifyOrderListQueryDto) {

@@ -20,22 +20,40 @@ const WITH_DETAILS = {
 export class SalesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll(query: SalesListQueryDto) {
-    return this.prisma.order.findMany({
-      where: {
-        ...(query.branchId ? { branchId: query.branchId } : {}),
-        ...(query.cashierUserId ? { cashierUserId: query.cashierUserId } : {}),
-        ...(query.soldByEmployeeId ? { soldByEmployeeId: query.soldByEmployeeId } : {}),
-        ...(query.paymentMethodId ? { payments: { some: { paymentMethodId: query.paymentMethodId } } } : {}),
-        ...(query.from || query.to
-          ? { createdAt: { ...(query.from ? { gte: new Date(query.from) } : {}), ...(query.to ? { lte: new Date(query.to) } : {}) } }
-          : {}),
-      },
-      include: WITH_DETAILS,
-      orderBy: { createdAt: "desc" },
-      skip: (query.page - 1) * query.pageSize,
-      take: query.pageSize,
-    });
+  async findAll(query: SalesListQueryDto) {
+    const where = {
+      ...(query.branchId ? { branchId: query.branchId } : {}),
+      ...(query.cashierUserId ? { cashierUserId: query.cashierUserId } : {}),
+      ...(query.soldByEmployeeId ? { soldByEmployeeId: query.soldByEmployeeId } : {}),
+      ...(query.paymentMethodId ? { payments: { some: { paymentMethodId: query.paymentMethodId } } } : {}),
+      ...(query.from || query.to
+        ? { createdAt: { ...(query.from ? { gte: new Date(query.from) } : {}), ...(query.to ? { lte: new Date(query.to) } : {}) } }
+        : {}),
+      ...(query.search
+        ? {
+            OR: [
+              { id: { startsWith: query.search, mode: "insensitive" as const } },
+              { items: { some: { productVariant: { sku: { contains: query.search, mode: "insensitive" as const } } } } },
+            ],
+          }
+        : {}),
+    };
+
+    const [data, totalCount, totalsAgg] = await Promise.all([
+      this.prisma.order.findMany({
+        where,
+        include: WITH_DETAILS,
+        orderBy: { createdAt: "desc" },
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+      }),
+      this.prisma.order.count({ where }),
+      // Sums ALL matching orders, not just the current page — the salesperson
+      // summary bar needs a true filtered total, not one page's worth.
+      this.prisma.order.aggregate({ where, _sum: { total: true } }),
+    ]);
+
+    return { data, totalCount, totalAmount: Number(totalsAgg._sum.total ?? 0) };
   }
 
   async findOne(id: string) {

@@ -15,27 +15,37 @@ import type {
 export class InventoryService {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll(query: InventoryListQueryDto) {
-    return this.prisma.inventory.findMany({
-      where: {
-        ...(query.branchId ? { branchId: query.branchId } : {}),
-      },
-      include: { productVariant: { include: { product: true } }, branch: true },
-      orderBy: { updatedAt: "desc" },
-    });
+  async findAll(query: InventoryListQueryDto) {
+    const where = { ...(query.branchId ? { branchId: query.branchId } : {}) };
+    const [data, totalCount] = await Promise.all([
+      this.prisma.inventory.findMany({
+        where,
+        include: { productVariant: { include: { product: true } }, branch: true },
+        orderBy: { updatedAt: "desc" },
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+      }),
+      this.prisma.inventory.count({ where }),
+    ]);
+    return { data, totalCount };
   }
 
-  findMovements(query: MovementsQueryDto) {
-    return this.prisma.stockMovement.findMany({
-      where: {
-        ...(query.branchId ? { branchId: query.branchId } : {}),
-        ...(query.productVariantId ? { productVariantId: query.productVariantId } : {}),
-      },
-      include: { productVariant: { include: { product: true } } },
-      orderBy: { createdAt: "desc" },
-      skip: (query.page - 1) * query.pageSize,
-      take: query.pageSize,
-    });
+  async findMovements(query: MovementsQueryDto) {
+    const where = {
+      ...(query.branchId ? { branchId: query.branchId } : {}),
+      ...(query.productVariantId ? { productVariantId: query.productVariantId } : {}),
+    };
+    const [data, totalCount] = await Promise.all([
+      this.prisma.stockMovement.findMany({
+        where,
+        include: { productVariant: { include: { product: true } } },
+        orderBy: { createdAt: "desc" },
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+      }),
+      this.prisma.stockMovement.count({ where }),
+    ]);
+    return { data, totalCount };
   }
 
   async adjust(dto: StockAdjustDto, userId: string) {

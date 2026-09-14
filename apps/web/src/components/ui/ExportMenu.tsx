@@ -14,7 +14,20 @@ interface ExportMenuProps {
   filename: string;
   /** Worksheet name for the .xlsx file; defaults to filename. */
   sheetName?: string;
+  /**
+   * The rows to export. When the visible list is paginated, this is
+   * typically just the current page — pass `fetchRows` instead (or as well)
+   * when "export" should mean every row matching the current filters, not
+   * just what's currently on screen.
+   */
   rows: Record<string, unknown>[];
+  /**
+   * When provided, called (and awaited) at export time instead of using the
+   * static `rows` array — for "export everything matching my filters" on a
+   * paginated list, where the full set isn't loaded up front. Takes
+   * precedence over `rows` when present.
+   */
+  fetchRows?: () => Promise<Record<string, unknown>[]>;
   /**
    * Maps a row's raw object keys (e.g. "unitsSold") to the human/translated
    * column label to actually display (e.g. "Units sold" / "الوحدات
@@ -38,7 +51,7 @@ function remapHeaders(
 }
 
 /** Dropdown replacement for a plain "Export CSV" button — same row data, two output formats. */
-export function ExportMenu({ label, disabled, filename, sheetName, rows, headers }: ExportMenuProps) {
+export function ExportMenu({ label, disabled, filename, sheetName, rows, fetchRows, headers }: ExportMenuProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -52,13 +65,16 @@ export function ExportMenu({ label, disabled, filename, sheetName, rows, headers
     return () => document.removeEventListener("mousedown", onClickOutside);
   }, []);
 
-  const isDisabled = disabled || rows.length === 0;
+  // With fetchRows, the full row count isn't known until export time — rely
+  // on the caller's `disabled` instead of an empty-array check.
+  const isDisabled = disabled || (!fetchRows && rows.length === 0);
 
   async function handle(format: "csv" | "xlsx") {
     setOpen(false);
     setBusy(true);
     try {
-      const displayRows = remapHeaders(rows, headers);
+      const sourceRows = fetchRows ? await fetchRows() : rows;
+      const displayRows = remapHeaders(sourceRows, headers);
       if (format === "csv") {
         downloadCsv(`${filename}.csv`, displayRows);
       } else {

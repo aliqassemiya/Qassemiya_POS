@@ -17,10 +17,13 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/TextField";
 import { SelectField } from "@/components/ui/SelectField";
+import { Pagination } from "@/components/ui/Pagination";
 import { useHasPermission } from "@/hooks/useHasPermission";
 import { toast } from "@/store/toastStore";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { endOfDayIso } from "@/lib/dateRange";
+
+const PAGE_SIZE = 50;
 
 function currency(n: number) {
   return new Intl.NumberFormat("en-SA", { style: "currency", currency: "SAR" }).format(n);
@@ -225,19 +228,31 @@ export function JournalEntriesPage() {
   const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
   const [from, setFrom] = useState(isoDate(monthAgo));
   const [to, setTo] = useState(isoDate(today));
+  const [page, setPage] = useState(1);
 
   const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: listBranches });
 
   const entriesQuery = useQuery({
-    queryKey: ["journal-entries", branchId, sourceType, from, to],
+    queryKey: ["journal-entries", branchId, sourceType, from, to, page],
     queryFn: () =>
       listJournalEntries({
         branchId: branchId || undefined,
         sourceType: sourceType || undefined,
         from: from ? new Date(from).toISOString() : undefined,
         to: to ? endOfDayIso(to) : undefined,
+        page,
+        pageSize: PAGE_SIZE,
       }),
   });
+  const journalEntries = entriesQuery.data?.data ?? [];
+  const totalCount = entriesQuery.data?.totalCount ?? 0;
+
+  function resetToFirstPage<T>(setter: (v: T) => void) {
+    return (v: T) => {
+      setPage(1);
+      setter(v);
+    };
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -249,7 +264,7 @@ export function JournalEntriesPage() {
       <div className="flex flex-wrap items-end gap-3">
         <select
           value={branchId}
-          onChange={(e) => setBranchId(e.target.value)}
+          onChange={(e) => resetToFirstPage(setBranchId)(e.target.value)}
           className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
         >
           <option value="">{t("common.allBranches")}</option>
@@ -261,7 +276,7 @@ export function JournalEntriesPage() {
         </select>
         <input
           value={sourceType}
-          onChange={(e) => setSourceType(e.target.value)}
+          onChange={(e) => resetToFirstPage(setSourceType)(e.target.value)}
           placeholder={t("journalEntries.sourceTypePlaceholder")}
           className="w-56 rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
         />
@@ -270,7 +285,7 @@ export function JournalEntriesPage() {
           <input
             type="date"
             value={from}
-            onChange={(e) => setFrom(e.target.value)}
+            onChange={(e) => resetToFirstPage(setFrom)(e.target.value)}
             className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
           />
         </div>
@@ -279,7 +294,7 @@ export function JournalEntriesPage() {
           <input
             type="date"
             value={to}
-            onChange={(e) => setTo(e.target.value)}
+            onChange={(e) => resetToFirstPage(setTo)(e.target.value)}
             className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
           />
         </div>
@@ -290,7 +305,7 @@ export function JournalEntriesPage() {
           isLoading={entriesQuery.isLoading}
           isError={entriesQuery.isError}
           error={entriesQuery.error}
-          isEmpty={(entriesQuery.data?.length ?? 0) === 0}
+          isEmpty={journalEntries.length === 0}
           emptyMessage={t("journalEntries.empty")}
         >
           <table className="w-full text-left text-sm">
@@ -304,7 +319,7 @@ export function JournalEntriesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {entriesQuery.data?.map((entry) => (
+              {journalEntries.map((entry) => (
                 <tr key={entry.id}>
                   <td className="px-4 py-2 text-slate-600">{new Date(entry.entryDate).toLocaleDateString()}</td>
                   <td className="px-4 py-2 font-medium text-slate-900">{entry.description}</td>
@@ -327,6 +342,8 @@ export function JournalEntriesPage() {
           </table>
         </DataState>
       </div>
+
+      <Pagination page={page} pageSize={PAGE_SIZE} totalCount={totalCount} onPageChange={setPage} />
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={t("journalEntries.newEntryModalTitle")}>
         <NewEntryForm

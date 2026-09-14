@@ -1,14 +1,17 @@
 import type { ProductInput, ProductVariantInput, VariantBulkUpdateRow } from "@qassemiya/shared-types";
 import { apiClient } from "@/lib/apiClient";
 import type { Product, ProductVariant } from "@/types/entities";
+import type { PaginatedResult } from "./pagination";
 
 export interface ProductsQuery {
   search?: string;
   categoryId?: string;
+  page?: number;
+  pageSize?: number;
 }
 
-export async function listProducts(query: ProductsQuery): Promise<Product[]> {
-  const { data } = await apiClient.get<Product[]>("/products", { params: query });
+export async function listProducts(query: ProductsQuery): Promise<PaginatedResult<Product>> {
+  const { data } = await apiClient.get<PaginatedResult<Product>>("/products", { params: query });
   return data;
 }
 

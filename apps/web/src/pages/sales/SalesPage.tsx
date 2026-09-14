@@ -7,7 +7,10 @@ import { listSales } from "@/api/sales";
 import { listPaymentMethods } from "@/api/paymentMethods";
 import { listEmployees } from "@/api/employees";
 import { DataState } from "@/components/ui/DataState";
+import { Pagination } from "@/components/ui/Pagination";
 import { useAuthStore } from "@/store/authStore";
+
+const PAGE_SIZE = 50;
 
 function currency(n: number) {
   return new Intl.NumberFormat("en-SA", { style: "currency", currency: "SAR" }).format(n);
@@ -25,35 +28,57 @@ export function SalesPage() {
   const activeBranchId = useAuthStore((s) => s.activeBranchId);
   const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: listBranches });
   const paymentMethodsQuery = useQuery({ queryKey: ["payment-methods"], queryFn: listPaymentMethods });
-  const employeesQuery = useQuery({ queryKey: ["employees"], queryFn: () => listEmployees() });
+  // pageSize 500 — this dropdown needs the full roster, not one page of it.
+  const employeesQuery = useQuery({ queryKey: ["employees"], queryFn: () => listEmployees({ pageSize: 500 }) });
   const [branchId, setBranchId] = useState(activeBranchId ?? "");
   const [paymentMethodId, setPaymentMethodId] = useState("");
   const [soldByEmployeeId, setSoldByEmployeeId] = useState("");
+  const [search, setSearch] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [page, setPage] = useState(1);
 
   const salesQuery = useQuery({
-    queryKey: ["sales", branchId, paymentMethodId, soldByEmployeeId, from, to],
+    queryKey: ["sales", branchId, paymentMethodId, soldByEmployeeId, search, from, to, page],
     queryFn: () =>
       listSales({
         branchId: branchId || undefined,
         paymentMethodId: paymentMethodId || undefined,
         soldByEmployeeId: soldByEmployeeId || undefined,
+        search: search || undefined,
         from: from || undefined,
         to: to || undefined,
+        page,
+        pageSize: PAGE_SIZE,
       }),
   });
 
-  const filteredTotal = salesQuery.data?.reduce((sum, o) => sum + o.total, 0) ?? 0;
+  const sales = salesQuery.data?.data ?? [];
+  const totalCount = salesQuery.data?.totalCount ?? 0;
+  const filteredTotal = salesQuery.data?.totalAmount ?? 0;
+
+  function resetToFirstPage<T>(setter: (v: T) => void) {
+    return (v: T) => {
+      setPage(1);
+      setter(v);
+    };
+  }
 
   return (
     <div className="flex flex-col gap-4">
       <h1 className="text-2xl font-bold text-slate-900">{t("sales.title")}</h1>
 
       <div className="flex flex-wrap items-end gap-3">
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => resetToFirstPage(setSearch)(e.target.value)}
+          placeholder={t("sales.searchPlaceholder")}
+          className="w-64 rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
+        />
         <select
           value={branchId}
-          onChange={(e) => setBranchId(e.target.value)}
+          onChange={(e) => resetToFirstPage(setBranchId)(e.target.value)}
           className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
         >
           <option value="">{t("common.allBranches")}</option>
@@ -65,7 +90,7 @@ export function SalesPage() {
         </select>
         <select
           value={paymentMethodId}
-          onChange={(e) => setPaymentMethodId(e.target.value)}
+          onChange={(e) => resetToFirstPage(setPaymentMethodId)(e.target.value)}
           className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
         >
           <option value="">{t("sales.allPaymentMethods")}</option>
@@ -77,11 +102,11 @@ export function SalesPage() {
         </select>
         <select
           value={soldByEmployeeId}
-          onChange={(e) => setSoldByEmployeeId(e.target.value)}
+          onChange={(e) => resetToFirstPage(setSoldByEmployeeId)(e.target.value)}
           className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
         >
           <option value="">{t("sales.allSalespeople")}</option>
-          {employeesQuery.data?.map((emp) => (
+          {employeesQuery.data?.data.map((emp) => (
             <option key={emp.id} value={emp.id}>
               {emp.fullName}
             </option>
@@ -92,7 +117,7 @@ export function SalesPage() {
           <input
             type="date"
             value={from}
-            onChange={(e) => setFrom(e.target.value)}
+            onChange={(e) => resetToFirstPage(setFrom)(e.target.value)}
             className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
           />
         </div>
@@ -101,7 +126,7 @@ export function SalesPage() {
           <input
             type="date"
             value={to}
-            onChange={(e) => setTo(e.target.value)}
+            onChange={(e) => resetToFirstPage(setTo)(e.target.value)}
             className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
           />
         </div>
@@ -109,7 +134,7 @@ export function SalesPage() {
 
       {soldByEmployeeId && salesQuery.data && (
         <div className="rounded-md border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700">
-          {t("sales.salespersonSummary", { count: salesQuery.data.length, total: currency(filteredTotal) })}
+          {t("sales.salespersonSummary", { count: totalCount, total: currency(filteredTotal) })}
         </div>
       )}
 
@@ -118,7 +143,7 @@ export function SalesPage() {
           isLoading={salesQuery.isLoading}
           isError={salesQuery.isError}
           error={salesQuery.error}
-          isEmpty={(salesQuery.data?.length ?? 0) === 0}
+          isEmpty={sales.length === 0}
           emptyMessage={t("sales.empty")}
         >
           <table className="w-full text-left text-sm">
@@ -136,7 +161,7 @@ export function SalesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {salesQuery.data?.map((order) => (
+              {sales.map((order) => (
                 <tr key={order.id}>
                   <td className="px-4 py-2 font-mono text-xs text-slate-600">
                     <Link to={`/sales/${order.id}`} className="hover:underline">
@@ -169,6 +194,8 @@ export function SalesPage() {
           </table>
         </DataState>
       </div>
+
+      <Pagination page={page} pageSize={PAGE_SIZE} totalCount={totalCount} onPageChange={setPage} />
     </div>
   );
 }

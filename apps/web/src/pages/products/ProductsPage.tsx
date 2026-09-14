@@ -5,18 +5,38 @@ import { useTranslation } from "react-i18next";
 import type { VariantBulkUpdateRow } from "@qassemiya/shared-types";
 import { listCategories } from "@/api/categories";
 import { bulkUpdateVariants, listProducts, type BulkUpdateResult } from "@/api/products";
+import type { Product } from "@/types/entities";
 import { DataState } from "@/components/ui/DataState";
 import { Button } from "@/components/ui/Button";
 import { ExportMenu } from "@/components/ui/ExportMenu";
+import { Pagination } from "@/components/ui/Pagination";
 import { useHasPermission } from "@/hooks/useHasPermission";
 import { parseCsv } from "@/lib/csv";
 import { toast } from "@/store/toastStore";
 import { getErrorMessage } from "@/lib/errorMessage";
 
+const PAGE_SIZE = 50;
+
 function numberOrUndefined(value: string | undefined): number | undefined {
   if (value === undefined || value.trim() === "") return undefined;
   const n = Number(value);
   return Number.isFinite(n) ? n : undefined;
+}
+
+function productToExportRows(product: Product) {
+  return product.variants.map((v) => ({
+    variantId: v.id,
+    sku: v.sku,
+    productName: product.name,
+    category: product.category?.name ?? "",
+    brand: product.brand ?? "",
+    size: v.size ?? "",
+    color: v.color ?? "",
+    costPrice: v.costPrice,
+    sellingPrice: v.sellingPrice,
+    compareAtPrice: v.compareAtPrice ?? "",
+    taxRate: v.taxRate,
+  }));
 }
 
 export function ProductsPage() {
@@ -25,17 +45,29 @@ export function ProductsPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [categoryId, setCategoryId] = useState("");
+  const [page, setPage] = useState(1);
   const [importResult, setImportResult] = useState<BulkUpdateResult | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const categoriesQuery = useQuery({ queryKey: ["categories"], queryFn: listCategories });
   const productsQuery = useQuery({
-    queryKey: ["products", search, categoryId],
-    queryFn: () => listProducts({ search: search || undefined, categoryId: categoryId || undefined }),
+    queryKey: ["products", search, categoryId, page],
+    queryFn: () =>
+      listProducts({ search: search || undefined, categoryId: categoryId || undefined, page, pageSize: PAGE_SIZE }),
   });
 
-  const allSelected = (productsQuery.data?.length ?? 0) > 0 && selectedIds.size === productsQuery.data?.length;
+  const products = productsQuery.data?.data ?? [];
+  const totalCount = productsQuery.data?.totalCount ?? 0;
+
+  function resetToFirstPage<T>(setter: (v: T) => void) {
+    return (v: T) => {
+      setPage(1);
+      setter(v);
+    };
+  }
+
+  const allSelected = products.length > 0 && selectedIds.size === products.length;
 
   function toggleSelected(productId: string) {
     setSelectedIds((prev) => {
@@ -50,33 +82,33 @@ export function ProductsPage() {
     if (allSelected) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(productsQuery.data?.map((p) => p.id) ?? []));
+      setSelectedIds(new Set(products.map((p) => p.id)));
     }
   }
 
-  function buildExportRows(scope: "all" | "selected") {
-    if (!productsQuery.data?.length) return [];
-    const source =
-      scope === "selected" ? productsQuery.data.filter((p) => selectedIds.has(p.id)) : productsQuery.data;
-    return source.flatMap((product) =>
-      product.variants.map((v) => ({
-        variantId: v.id,
-        sku: v.sku,
-        productName: product.name,
-        category: product.category?.name ?? "",
-        brand: product.brand ?? "",
-        size: v.size ?? "",
-        color: v.color ?? "",
-        costPrice: v.costPrice,
-        sellingPrice: v.sellingPrice,
-        compareAtPrice: v.compareAtPrice ?? "",
-        taxRate: v.taxRate,
-      })),
-    );
+  const selectedExportRows = products.filter((p) => selectedIds.has(p.id)).flatMap(productToExportRows);
+
+  // "Export all" means every product matching the current filters, not just
+  // the current page — fetched on demand at export time (not via
+  // productsQuery, which is intentionally scoped to one page for the table).
+  async function fetchAllMatchingProductRows() {
+    const fetchPageSize = 100;
+    let fetchPage = 1;
+    let all: Product[] = [];
+    for (;;) {
+      const result = await listProducts({
+        search: search || undefined,
+        categoryId: categoryId || undefined,
+        page: fetchPage,
+        pageSize: fetchPageSize,
+      });
+      all = all.concat(result.data);
+      if (all.length >= result.totalCount || result.data.length === 0) break;
+      fetchPage += 1;
+    }
+    return all.flatMap(productToExportRows);
   }
 
-  const selectedExportRows = buildExportRows("selected");
-  const allExportRows = buildExportRows("all");
   const exportDate = new Date().toISOString().slice(0, 10);
   const exportHeaders = {
     variantId: t("products.form.variantIdColumn"),
@@ -138,10 +170,11 @@ export function ProductsPage() {
               />
               <ExportMenu
                 label={t("products.exportAll")}
-                disabled={!productsQuery.data?.length}
+                disabled={totalCount === 0}
                 filename={`products-all-${exportDate}`}
                 sheetName="Products"
-                rows={allExportRows}
+                rows={[]}
+                fetchRows={fetchAllMatchingProductRows}
                 headers={exportHeaders}
               />
               <input
@@ -202,13 +235,13 @@ export function ProductsPage() {
       <div className="flex flex-wrap gap-3">
         <input
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => resetToFirstPage(setSearch)(e.target.value)}
           placeholder={t("products.searchPlaceholder")}
           className="w-64 rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
         />
         <select
           value={categoryId}
-          onChange={(e) => setCategoryId(e.target.value)}
+          onChange={(e) => resetToFirstPage(setCategoryId)(e.target.value)}
           className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
         >
           <option value="">{t("products.allCategories")}</option>
@@ -225,7 +258,7 @@ export function ProductsPage() {
           isLoading={productsQuery.isLoading}
           isError={productsQuery.isError}
           error={productsQuery.error}
-          isEmpty={(productsQuery.data?.length ?? 0) === 0}
+          isEmpty={products.length === 0}
           emptyMessage={t("products.empty")}
         >
           <table className="w-full text-left text-sm">
@@ -249,7 +282,7 @@ export function ProductsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {productsQuery.data?.map((product) => (
+              {products.map((product) => (
                 <tr key={product.id}>
                   <td className="px-4 py-2">
                     <input
@@ -287,6 +320,8 @@ export function ProductsPage() {
           </table>
         </DataState>
       </div>
+
+      <Pagination page={page} pageSize={PAGE_SIZE} totalCount={totalCount} onPageChange={setPage} />
     </div>
   );
 }

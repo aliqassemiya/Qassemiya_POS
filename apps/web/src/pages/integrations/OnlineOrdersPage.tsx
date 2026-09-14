@@ -5,6 +5,7 @@ import { listShopifyOrders, type ShopifyOrder } from "@/api/shopify";
 import { DataState } from "@/components/ui/DataState";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
+import { Pagination } from "@/components/ui/Pagination";
 
 const PAGE_SIZE = 50;
 
@@ -14,6 +15,7 @@ function currency(n: number, code: string) {
 
 export function OnlineOrdersPage() {
   const { t } = useTranslation();
+  const [search, setSearch] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [unmatchedOnly, setUnmatchedOnly] = useState(false);
@@ -21,9 +23,10 @@ export function OnlineOrdersPage() {
   const [selected, setSelected] = useState<ShopifyOrder | null>(null);
 
   const ordersQuery = useQuery({
-    queryKey: ["shopify", "orders", from, to, unmatchedOnly, page],
+    queryKey: ["shopify", "orders", search, from, to, unmatchedOnly, page],
     queryFn: () =>
       listShopifyOrders({
+        search: search || undefined,
         from: from || undefined,
         to: to || undefined,
         unmatchedOnly: unmatchedOnly || undefined,
@@ -33,7 +36,6 @@ export function OnlineOrdersPage() {
   });
 
   const totalCount = ordersQuery.data?.totalCount ?? 0;
-  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
   function resetToFirstPage<T>(setter: (v: T) => void) {
     return (v: T) => {
@@ -47,6 +49,16 @@ export function OnlineOrdersPage() {
       <h1 className="text-2xl font-bold text-slate-900">{t("shopify.onlineOrdersTitle")}</h1>
 
       <div className="flex flex-wrap items-end gap-3">
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-slate-500">{t("common.search")}</label>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => resetToFirstPage(setSearch)(e.target.value)}
+            placeholder={t("shopify.searchPlaceholder")}
+            className="w-64 rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
+          />
+        </div>
         <div className="flex flex-col gap-1">
           <label className="text-xs text-slate-500">{t("common.from")}</label>
           <input
@@ -126,19 +138,7 @@ export function OnlineOrdersPage() {
         </DataState>
       </div>
 
-      {totalCount > 0 && (
-        <div className="flex items-center justify-between text-sm text-slate-600">
-          <span>{t("shopify.pageOfTotal", { page, totalPages, count: totalCount })}</span>
-          <div className="flex gap-2">
-            <Button variant="secondary" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-              {t("common.previous")}
-            </Button>
-            <Button variant="secondary" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
-              {t("common.next")}
-            </Button>
-          </div>
-        </div>
-      )}
+      <Pagination page={page} pageSize={PAGE_SIZE} totalCount={totalCount} onPageChange={setPage} />
 
       <Modal open={!!selected} onClose={() => setSelected(null)} title={selected?.orderNumber ?? ""}>
         {selected && (

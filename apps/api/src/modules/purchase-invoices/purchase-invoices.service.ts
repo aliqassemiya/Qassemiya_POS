@@ -14,16 +14,23 @@ const WITH_DETAILS = {
 export class PurchaseInvoicesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll(query: PurchaseInvoiceListQueryDto) {
-    return this.prisma.purchaseInvoice.findMany({
-      where: {
-        ...(query.vendorId ? { vendorId: query.vendorId } : {}),
-        ...(query.purchaseOrderId ? { purchaseOrderId: query.purchaseOrderId } : {}),
-        ...(query.status ? { status: query.status } : {}),
-      },
-      include: WITH_DETAILS,
-      orderBy: { createdAt: "desc" },
-    });
+  async findAll(query: PurchaseInvoiceListQueryDto) {
+    const where = {
+      ...(query.vendorId ? { vendorId: query.vendorId } : {}),
+      ...(query.purchaseOrderId ? { purchaseOrderId: query.purchaseOrderId } : {}),
+      ...(query.status ? { status: query.status } : {}),
+    };
+    const [data, totalCount] = await Promise.all([
+      this.prisma.purchaseInvoice.findMany({
+        where,
+        include: WITH_DETAILS,
+        orderBy: { createdAt: "desc" },
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+      }),
+      this.prisma.purchaseInvoice.count({ where }),
+    ]);
+    return { data, totalCount };
   }
 
   async findOne(id: string) {

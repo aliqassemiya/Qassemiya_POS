@@ -18,8 +18,11 @@ import { useAuthStore } from "@/store/authStore";
 import { useHasPermission } from "@/hooks/useHasPermission";
 import { parseCsv } from "@/lib/csv";
 import { ExportMenu } from "@/components/ui/ExportMenu";
+import { Pagination } from "@/components/ui/Pagination";
 import { toast } from "@/store/toastStore";
 import { getErrorMessage } from "@/lib/errorMessage";
+
+const PAGE_SIZE = 50;
 
 const ADJUSTABLE_TYPES: StockMovementType[] = [
   StockMovementType.ADJUSTMENT,
@@ -294,13 +297,18 @@ export function InventoryPage() {
   const [transferOpen, setTransferOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [importResult, setImportResult] = useState<{ updated: number; errorCount: number; errors: Array<{ row: number; message: string }> } | null>(null);
+  const [page, setPage] = useState(1);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const inventoryQuery = useQuery({
-    queryKey: ["inventory", branchId],
-    queryFn: () => listInventory({ branchId: branchId || undefined }),
+    queryKey: ["inventory", branchId, page],
+    queryFn: () => listInventory({ branchId: branchId || undefined, page, pageSize: PAGE_SIZE }),
   });
+  const inventoryRows = inventoryQuery.data?.data ?? [];
+  const totalCount = inventoryQuery.data?.totalCount ?? 0;
 
+  // "Recent movements" — a small activity preview, not a paginated browser,
+  // so this intentionally only ever fetches/shows the first page.
   const movementsQuery = useQuery({
     queryKey: ["inventory", "movements", branchId],
     queryFn: () => listMovements({ branchId: branchId || undefined }),
@@ -340,7 +348,7 @@ export function InventoryPage() {
     onError: (err) => toast.error(getErrorMessage(err, t("inventory.importFailed"))),
   });
 
-  const allSelected = (inventoryQuery.data?.length ?? 0) > 0 && selectedIds.size === inventoryQuery.data?.length;
+  const allSelected = inventoryRows.length > 0 && selectedIds.size === inventoryRows.length;
 
   function toggleSelected(id: string) {
     setSelectedIds((prev) => {
@@ -355,14 +363,12 @@ export function InventoryPage() {
     if (allSelected) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(inventoryQuery.data?.map((r) => r.id) ?? []));
+      setSelectedIds(new Set(inventoryRows.map((r) => r.id)));
     }
   }
 
-  function buildExportRows(scope: "all" | "selected") {
-    if (!inventoryQuery.data?.length) return [];
-    const source = scope === "selected" ? inventoryQuery.data.filter((r) => selectedIds.has(r.id)) : inventoryQuery.data;
-    return source.map((r) => ({
+  function toExportRow(r: Inventory) {
+    return {
       branchId: r.branchId,
       branch: r.branch?.name ?? "",
       productVariantId: r.productVariantId,
@@ -371,11 +377,26 @@ export function InventoryPage() {
       size: r.variant?.size ?? "",
       color: r.variant?.color ?? "",
       quantityOnHand: r.quantityOnHand,
-    }));
+    };
   }
 
-  const selectedExportRows = buildExportRows("selected");
-  const allExportRows = buildExportRows("all");
+  const selectedExportRows = inventoryRows.filter((r) => selectedIds.has(r.id)).map(toExportRow);
+
+  // "Export all" means every row matching the current branch filter, not
+  // just the current page — fetched on demand at export time.
+  async function fetchAllMatchingInventoryRows() {
+    const fetchPageSize = 200;
+    let fetchPage = 1;
+    let all: Inventory[] = [];
+    for (;;) {
+      const result = await listInventory({ branchId: branchId || undefined, page: fetchPage, pageSize: fetchPageSize });
+      all = all.concat(result.data);
+      if (all.length >= result.totalCount || result.data.length === 0) break;
+      fetchPage += 1;
+    }
+    return all.map(toExportRow);
+  }
+
   const exportDate = new Date().toISOString().slice(0, 10);
   const exportHeaders = {
     branchId: t("common.branchIdColumn"),
@@ -420,10 +441,11 @@ export function InventoryPage() {
               />
               <ExportMenu
                 label={t("common.exportAll")}
-                disabled={!inventoryQuery.data?.length}
+                disabled={totalCount === 0}
                 filename={`inventory-all-${exportDate}`}
                 sheetName="Inventory"
-                rows={allExportRows}
+                rows={[]}
+                fetchRows={fetchAllMatchingInventoryRows}
                 headers={exportHeaders}
               />
               <input
@@ -476,7 +498,10 @@ export function InventoryPage() {
       <div className="flex flex-wrap items-center gap-3">
         <select
           value={branchId}
-          onChange={(e) => setBranchId(e.target.value)}
+          onChange={(e) => {
+            setPage(1);
+            setBranchId(e.target.value);
+          }}
           className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
         >
           <option value="">{t("common.allBranches")}</option>
@@ -493,7 +518,7 @@ export function InventoryPage() {
           isLoading={inventoryQuery.isLoading}
           isError={inventoryQuery.isError}
           error={inventoryQuery.error}
-          isEmpty={(inventoryQuery.data?.length ?? 0) === 0}
+          isEmpty={inventoryRows.length === 0}
           emptyMessage={t("inventory.emptyStock")}
         >
           <table className="w-full text-left text-sm">
@@ -515,7 +540,7 @@ export function InventoryPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {inventoryQuery.data?.map((row) => (
+              {inventoryRows.map((row) => (
                 <tr key={row.id}>
                   <td className="px-4 py-2">
                     <input
@@ -549,17 +574,19 @@ export function InventoryPage() {
         </DataState>
       </div>
 
+      <Pagination page={page} pageSize={PAGE_SIZE} totalCount={totalCount} onPageChange={setPage} />
+
       <div className="rounded-lg border border-slate-200 bg-white p-4">
         <h2 className="mb-3 text-sm font-semibold text-slate-700">{t("inventory.recentMovementsTitle")}</h2>
         <DataState
           isLoading={movementsQuery.isLoading}
           isError={movementsQuery.isError}
           error={movementsQuery.error}
-          isEmpty={(movementsQuery.data?.length ?? 0) === 0}
+          isEmpty={(movementsQuery.data?.data.length ?? 0) === 0}
           emptyMessage={t("inventory.emptyMovements")}
         >
           <ul className="divide-y divide-slate-100 text-sm">
-            {movementsQuery.data?.slice(0, 15).map((m) => (
+            {movementsQuery.data?.data.slice(0, 15).map((m) => (
               <li key={m.id} className="flex items-center justify-between py-2">
                 <span>
                   {m.variant?.sku ?? m.productVariantId} — {t(`inventory.movementTypes.${m.type}`)}

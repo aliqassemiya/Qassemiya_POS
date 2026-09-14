@@ -35,6 +35,17 @@ export const resetPinSchema = z.object({
   pinCode: z.string().min(4).max(8),
 });
 
+// pageSize caps at 500, not the usual 50-200 — unlike a transactional list
+// (orders, invoices), the total headcount across all branches is small and
+// bounded, and callers like the Sales page's salesperson filter dropdown
+// need the full roster, not just one page of it.
+export const employeeListQuerySchema = z.object({
+  branchId: z.string().uuid().optional(),
+  page: z.coerce.number().int().positive().default(1),
+  pageSize: z.coerce.number().int().positive().max(500).default(50),
+});
+
 export class CreateEmployeeDto extends createZodDto(createEmployeeSchema) {}
 export class UpdateEmployeeDto extends createZodDto(updateEmployeeSchema) {}
 export class ResetPinDto extends createZodDto(resetPinSchema) {}
+export class EmployeeListQueryDto extends createZodDto(employeeListQuerySchema) {}

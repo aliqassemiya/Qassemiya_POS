@@ -18,9 +18,12 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/TextField";
 import { SelectField } from "@/components/ui/SelectField";
+import { Pagination } from "@/components/ui/Pagination";
 import { useHasPermission } from "@/hooks/useHasPermission";
 import { toast } from "@/store/toastStore";
 import { getErrorMessage } from "@/lib/errorMessage";
+
+const PAGE_SIZE = 20;
 
 function currency(n: number) {
   return new Intl.NumberFormat("en-SA", { style: "currency", currency: "SAR" }).format(n);
@@ -52,9 +55,10 @@ function buildPurchaseInvoiceSchema(t: (key: string) => string) {
 function NewInvoiceForm({ onCreated }: { onCreated: () => void }) {
   const { t } = useTranslation();
   const vendorsQuery = useQuery({ queryKey: ["vendors"], queryFn: () => listVendors() });
+  // pageSize 100 (the DTO's max) — this dropdown needs the full open-PO list, not one page of it.
   const purchaseOrdersQuery = useQuery({
     queryKey: ["purchase-orders", "for-invoice"],
-    queryFn: () => listPurchaseOrders(),
+    queryFn: () => listPurchaseOrders({ pageSize: 100 }),
   });
 
   const purchaseInvoiceSchema = useMemo(() => buildPurchaseInvoiceSchema(t), [t]);
@@ -103,7 +107,7 @@ function NewInvoiceForm({ onCreated }: { onCreated: () => void }) {
         {...register("purchaseOrderId")}
       >
         <option value="">{t("purchaseInvoices.noneOption")}</option>
-        {purchaseOrdersQuery.data?.map((po) => (
+        {purchaseOrdersQuery.data?.data.map((po) => (
           <option key={po.id} value={po.id}>
             PO #{po.id.slice(0, 8)} — {po.vendor?.name ?? po.vendorId}
           </option>
@@ -160,16 +164,28 @@ export function PurchaseInvoicesPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [vendorId, setVendorId] = useState("");
   const [status, setStatus] = useState("");
+  const [page, setPage] = useState(1);
 
   const vendorsQuery = useQuery({ queryKey: ["vendors"], queryFn: () => listVendors() });
   const invoicesQuery = useQuery({
-    queryKey: ["purchase-invoices", vendorId, status],
+    queryKey: ["purchase-invoices", vendorId, status, page],
     queryFn: () =>
       listPurchaseInvoices({
         vendorId: vendorId || undefined,
         status: (status || undefined) as (typeof PurchaseInvoiceStatus)[keyof typeof PurchaseInvoiceStatus] | undefined,
+        page,
+        pageSize: PAGE_SIZE,
       }),
   });
+  const invoices = invoicesQuery.data?.data ?? [];
+  const totalCount = invoicesQuery.data?.totalCount ?? 0;
+
+  function resetToFirstPage<T>(setter: (v: T) => void) {
+    return (v: T) => {
+      setPage(1);
+      setter(v);
+    };
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -181,7 +197,7 @@ export function PurchaseInvoicesPage() {
       <div className="flex flex-wrap gap-3">
         <select
           value={vendorId}
-          onChange={(e) => setVendorId(e.target.value)}
+          onChange={(e) => resetToFirstPage(setVendorId)(e.target.value)}
           className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
         >
           <option value="">{t("purchaseInvoices.allVendors")}</option>
@@ -193,7 +209,7 @@ export function PurchaseInvoicesPage() {
         </select>
         <select
           value={status}
-          onChange={(e) => setStatus(e.target.value)}
+          onChange={(e) => resetToFirstPage(setStatus)(e.target.value)}
           className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
         >
           <option value="">{t("purchaseInvoices.allStatuses")}</option>
@@ -210,7 +226,7 @@ export function PurchaseInvoicesPage() {
           isLoading={invoicesQuery.isLoading}
           isError={invoicesQuery.isError}
           error={invoicesQuery.error}
-          isEmpty={(invoicesQuery.data?.length ?? 0) === 0}
+          isEmpty={invoices.length === 0}
           emptyMessage={t("purchaseInvoices.empty")}
         >
           <table className="w-full text-left text-sm">
@@ -225,7 +241,7 @@ export function PurchaseInvoicesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {invoicesQuery.data?.map((inv) => (
+              {invoices.map((inv) => (
                 <tr key={inv.id}>
                   <td className="px-4 py-2 font-mono text-xs text-slate-600">{inv.invoiceNumber}</td>
                   <td className="px-4 py-2 font-medium text-slate-900">{inv.vendor?.name ?? inv.vendorId}</td>
@@ -251,6 +267,8 @@ export function PurchaseInvoicesPage() {
           </table>
         </DataState>
       </div>
+
+      <Pagination page={page} pageSize={PAGE_SIZE} totalCount={totalCount} onPageChange={setPage} />
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={t("purchaseInvoices.newInvoiceModalTitle")}>
         <NewInvoiceForm

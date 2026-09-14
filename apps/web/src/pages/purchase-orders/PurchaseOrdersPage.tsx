@@ -7,8 +7,11 @@ import { listVendors } from "@/api/vendors";
 import { listPurchaseOrders } from "@/api/purchase-orders";
 import { PurchaseOrderStatus } from "@/types/entities";
 import { DataState } from "@/components/ui/DataState";
+import { Pagination } from "@/components/ui/Pagination";
 import { useAuthStore } from "@/store/authStore";
 import { useHasPermission } from "@/hooks/useHasPermission";
+
+const PAGE_SIZE = 20;
 
 const STATUS_CLASSES: Record<string, string> = {
   DRAFT: "bg-slate-100 text-slate-600",
@@ -31,9 +34,10 @@ export function PurchaseOrdersPage() {
   const [status, setStatus] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [page, setPage] = useState(1);
 
   const poQuery = useQuery({
-    queryKey: ["purchase-orders", vendorId, branchId, status, from, to],
+    queryKey: ["purchase-orders", vendorId, branchId, status, from, to, page],
     queryFn: () =>
       listPurchaseOrders({
         vendorId: vendorId || undefined,
@@ -41,8 +45,19 @@ export function PurchaseOrdersPage() {
         status: (status || undefined) as (typeof PurchaseOrderStatus)[keyof typeof PurchaseOrderStatus] | undefined,
         from: from || undefined,
         to: to || undefined,
+        page,
+        pageSize: PAGE_SIZE,
       }),
   });
+  const purchaseOrders = poQuery.data?.data ?? [];
+  const totalCount = poQuery.data?.totalCount ?? 0;
+
+  function resetToFirstPage<T>(setter: (v: T) => void) {
+    return (v: T) => {
+      setPage(1);
+      setter(v);
+    };
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -61,7 +76,7 @@ export function PurchaseOrdersPage() {
       <div className="flex flex-wrap items-end gap-3">
         <select
           value={vendorId}
-          onChange={(e) => setVendorId(e.target.value)}
+          onChange={(e) => resetToFirstPage(setVendorId)(e.target.value)}
           className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
         >
           <option value="">{t("purchaseOrders.allVendors")}</option>
@@ -73,7 +88,7 @@ export function PurchaseOrdersPage() {
         </select>
         <select
           value={branchId}
-          onChange={(e) => setBranchId(e.target.value)}
+          onChange={(e) => resetToFirstPage(setBranchId)(e.target.value)}
           className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
         >
           <option value="">{t("common.allBranches")}</option>
@@ -85,7 +100,7 @@ export function PurchaseOrdersPage() {
         </select>
         <select
           value={status}
-          onChange={(e) => setStatus(e.target.value)}
+          onChange={(e) => resetToFirstPage(setStatus)(e.target.value)}
           className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
         >
           <option value="">{t("purchaseOrders.allStatuses")}</option>
@@ -100,7 +115,7 @@ export function PurchaseOrdersPage() {
           <input
             type="date"
             value={from}
-            onChange={(e) => setFrom(e.target.value)}
+            onChange={(e) => resetToFirstPage(setFrom)(e.target.value)}
             className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
           />
         </div>
@@ -109,7 +124,7 @@ export function PurchaseOrdersPage() {
           <input
             type="date"
             value={to}
-            onChange={(e) => setTo(e.target.value)}
+            onChange={(e) => resetToFirstPage(setTo)(e.target.value)}
             className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
           />
         </div>
@@ -120,7 +135,7 @@ export function PurchaseOrdersPage() {
           isLoading={poQuery.isLoading}
           isError={poQuery.isError}
           error={poQuery.error}
-          isEmpty={(poQuery.data?.length ?? 0) === 0}
+          isEmpty={purchaseOrders.length === 0}
           emptyMessage={t("purchaseOrders.empty")}
         >
           <table className="w-full text-left text-sm">
@@ -135,7 +150,7 @@ export function PurchaseOrdersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {poQuery.data?.map((po) => (
+              {purchaseOrders.map((po) => (
                 <tr key={po.id}>
                   <td className="px-4 py-2 text-slate-600">{new Date(po.createdAt).toLocaleString()}</td>
                   <td className="px-4 py-2 font-medium text-slate-900">{po.vendor?.name ?? po.vendorId}</td>
@@ -161,6 +176,8 @@ export function PurchaseOrdersPage() {
           </table>
         </DataState>
       </div>
+
+      <Pagination page={page} pageSize={PAGE_SIZE} totalCount={totalCount} onPageChange={setPage} />
     </div>
   );
 }

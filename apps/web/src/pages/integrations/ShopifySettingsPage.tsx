@@ -3,14 +3,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
   getShopifyIntegration,
+  getShopifySyncLogEntries,
   listShopifySyncLogs,
   runShopifySync,
   testShopifyConnection,
   upsertShopifyIntegration,
+  type ShopifySyncLog,
 } from "@/api/shopify";
 import { DataState } from "@/components/ui/DataState";
 import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/TextField";
+import { Modal } from "@/components/ui/Modal";
 import { toast } from "@/store/toastStore";
 import { getErrorMessage } from "@/lib/errorMessage";
 
@@ -20,12 +23,23 @@ const LOG_STATUS_CLASSES: Record<string, string> = {
   IN_PROGRESS: "bg-amber-100 text-amber-700",
 };
 
+const ACTION_CLASSES: Record<string, string> = {
+  CREATED: "bg-green-100 text-green-700",
+  UPDATED: "bg-blue-100 text-blue-700",
+};
+
 export function ShopifySettingsPage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
 
   const integrationQuery = useQuery({ queryKey: ["shopify", "integration"], queryFn: getShopifyIntegration });
   const logsQuery = useQuery({ queryKey: ["shopify", "sync-logs"], queryFn: listShopifySyncLogs });
+  const [selectedLog, setSelectedLog] = useState<ShopifySyncLog | null>(null);
+  const logEntriesQuery = useQuery({
+    queryKey: ["shopify", "sync-log-entries", selectedLog?.id],
+    queryFn: () => getShopifySyncLogEntries(selectedLog!.id),
+    enabled: !!selectedLog,
+  });
 
   const [shopDomain, setShopDomain] = useState("");
   const [accessToken, setAccessToken] = useState("");
@@ -181,7 +195,11 @@ export function ShopifySettingsPage() {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {logsQuery.data?.map((log) => (
-                    <tr key={log.id}>
+                    <tr
+                      key={log.id}
+                      className="cursor-pointer hover:bg-slate-50"
+                      onClick={() => setSelectedLog(log)}
+                    >
                       <td className="px-3 py-2 text-slate-600">{new Date(log.startedAt).toLocaleString()}</td>
                       <td className="px-3 py-2 text-slate-600">{log.triggeredBy}</td>
                       <td className="px-3 py-2">
@@ -189,7 +207,9 @@ export function ShopifySettingsPage() {
                           {log.status}
                         </span>
                       </td>
-                      <td className="px-3 py-2 text-slate-600">{log.ordersUpserted} / {log.ordersFetched}</td>
+                      <td className="px-3 py-2 text-slate-600 underline decoration-dotted">
+                        {log.ordersUpserted} / {log.ordersFetched}
+                      </td>
                       <td className="px-3 py-2 text-red-600">{log.errorMessage ?? "—"}</td>
                     </tr>
                   ))}
@@ -199,6 +219,74 @@ export function ShopifySettingsPage() {
           </section>
         </div>
       </DataState>
+
+      <Modal
+        open={!!selectedLog}
+        onClose={() => setSelectedLog(null)}
+        title={selectedLog ? new Date(selectedLog.startedAt).toLocaleString() : ""}
+      >
+        {selectedLog && (
+          <div className="flex flex-col gap-3">
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <p className="text-slate-500">{t("common.status")}</p>
+                <p className="font-medium text-slate-900">{selectedLog.status}</p>
+              </div>
+              <div>
+                <p className="text-slate-500">{t("shopify.logTriggeredByColumn")}</p>
+                <p className="font-medium text-slate-900">{selectedLog.triggeredBy}</p>
+              </div>
+              <div>
+                <p className="text-slate-500">{t("shopify.logOrdersColumn")}</p>
+                <p className="font-medium text-slate-900">
+                  {selectedLog.ordersUpserted} / {selectedLog.ordersFetched}
+                </p>
+              </div>
+              {selectedLog.finishedAt && (
+                <div>
+                  <p className="text-slate-500">{t("shopify.logFinishedLabel")}</p>
+                  <p className="font-medium text-slate-900">{new Date(selectedLog.finishedAt).toLocaleString()}</p>
+                </div>
+              )}
+              {selectedLog.errorMessage && (
+                <div className="col-span-2">
+                  <p className="text-slate-500">{t("shopify.logErrorColumn")}</p>
+                  <p className="font-medium text-red-600">{selectedLog.errorMessage}</p>
+                </div>
+              )}
+            </div>
+
+            <DataState
+              isLoading={logEntriesQuery.isLoading}
+              isError={logEntriesQuery.isError}
+              error={logEntriesQuery.error}
+              isEmpty={(logEntriesQuery.data?.length ?? 0) === 0}
+              emptyMessage={t("shopify.noLogEntries")}
+            >
+              <table className="w-full text-left text-sm">
+                <thead className="bg-slate-50 text-slate-500">
+                  <tr>
+                    <th className="px-2 py-1 font-medium">{t("shopify.orderNumberColumn")}</th>
+                    <th className="px-2 py-1 font-medium">{t("shopify.logActionColumn")}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {logEntriesQuery.data?.map((entry) => (
+                    <tr key={entry.id}>
+                      <td className="px-2 py-1 font-medium text-slate-900">{entry.orderNumber}</td>
+                      <td className="px-2 py-1">
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${ACTION_CLASSES[entry.action] ?? "bg-slate-100 text-slate-600"}`}>
+                          {t(`shopify.actions.${entry.action}`)}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </DataState>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

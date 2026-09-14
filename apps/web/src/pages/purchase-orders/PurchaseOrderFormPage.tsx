@@ -178,12 +178,12 @@ export function PurchaseOrderFormPage() {
                 isLoading={searchQuery.isLoading}
                 isError={searchQuery.isError}
                 error={searchQuery.error}
-                isEmpty={(searchQuery.data?.length ?? 0) === 0}
+                isEmpty={(searchQuery.data?.data.length ?? 0) === 0}
                 emptyMessage={t("purchaseOrders.form.noMatchingProducts")}
               >
                 <table className="w-full text-left text-sm">
                   <tbody className="divide-y divide-slate-100">
-                    {searchQuery.data?.flatMap((product) =>
+                    {searchQuery.data?.data.flatMap((product) =>
                       product.variants.map((variant) => (
                         <tr key={variant.id}>
                           <td className="px-3 py-2 font-mono text-xs text-slate-600">{variant.sku}</td>

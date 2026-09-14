@@ -1,5 +1,6 @@
 import { apiClient } from "@/lib/apiClient";
 import type { PurchaseOrder, PurchaseOrderStatus } from "@/types/entities";
+import type { PaginatedResult } from "./pagination";
 
 // Matches packages/shared-types/src/purchasing.ts's createPurchaseOrderSchema
 // exactly — header totals (subtotal/total) and per-item lineTotal are
@@ -36,10 +37,12 @@ export interface PurchaseOrdersQuery {
   status?: PurchaseOrderStatus;
   from?: string;
   to?: string;
+  page?: number;
+  pageSize?: number;
 }
 
-export async function listPurchaseOrders(query: PurchaseOrdersQuery = {}): Promise<PurchaseOrder[]> {
-  const { data } = await apiClient.get<PurchaseOrder[]>("/purchase-orders", { params: query });
+export async function listPurchaseOrders(query: PurchaseOrdersQuery = {}): Promise<PaginatedResult<PurchaseOrder>> {
+  const { data } = await apiClient.get<PaginatedResult<PurchaseOrder>>("/purchase-orders", { params: query });
   return data;
 }
 

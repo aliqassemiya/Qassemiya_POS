@@ -29,14 +29,18 @@ export class ProductsService {
         : {}),
     };
 
-    // Bare array, matching every other list endpoint (/customers, /branches,
-    // /categories, ...) — phase-1 clients don't implement pagination UI yet.
-    return this.prisma.product.findMany({
-      where,
-      include: WITH_VARIANTS,
-      orderBy: { name: "asc" },
-      take: query.pageSize,
-    });
+    const [data, totalCount] = await Promise.all([
+      this.prisma.product.findMany({
+        where,
+        include: WITH_VARIANTS,
+        orderBy: { name: "asc" },
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+      }),
+      this.prisma.product.count({ where }),
+    ]);
+
+    return { data, totalCount };
   }
 
   async findOne(id: string) {

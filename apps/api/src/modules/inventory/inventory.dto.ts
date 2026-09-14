@@ -8,6 +8,8 @@ export class InventoryBulkAdjustDto extends createZodDto(inventoryBulkAdjustSche
 
 export const inventoryListQuerySchema = z.object({
   branchId: z.string().uuid().optional(),
+  page: z.coerce.number().int().positive().default(1),
+  pageSize: z.coerce.number().int().positive().max(200).default(50),
 });
 export class InventoryListQueryDto extends createZodDto(inventoryListQuerySchema) {}
 

@@ -1,14 +1,17 @@
 import type { InventoryBulkAdjustRow, StockAdjustInput, StockTransferInput } from "@qassemiya/shared-types";
 import { apiClient } from "@/lib/apiClient";
 import type { Inventory, StockMovement } from "@/types/entities";
+import type { PaginatedResult } from "./pagination";
 
 export interface InventoryQuery {
   branchId?: string;
   variantId?: string;
+  page?: number;
+  pageSize?: number;
 }
 
-export async function listInventory(query: InventoryQuery): Promise<Inventory[]> {
-  const { data } = await apiClient.get<Inventory[]>("/inventory", { params: query });
+export async function listInventory(query: InventoryQuery): Promise<PaginatedResult<Inventory>> {
+  const { data } = await apiClient.get<PaginatedResult<Inventory>>("/inventory", { params: query });
   return data;
 }
 
@@ -17,8 +20,8 @@ export async function adjustStock(input: StockAdjustInput): Promise<StockMovemen
   return data;
 }
 
-export async function listMovements(query: InventoryQuery): Promise<StockMovement[]> {
-  const { data } = await apiClient.get<StockMovement[]>("/inventory/movements", { params: query });
+export async function listMovements(query: InventoryQuery): Promise<PaginatedResult<StockMovement>> {
+  const { data } = await apiClient.get<PaginatedResult<StockMovement>>("/inventory/movements", { params: query });
   return data;
 }
 

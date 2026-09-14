@@ -1,5 +1,6 @@
 import { apiClient } from "@/lib/apiClient";
 import type { JournalEntry } from "@/types/entities";
+import type { PaginatedResult } from "./pagination";
 
 // No shared-types schema exists for JournalEntry yet — see the note atop
 // types/entities.ts. Journal entries are append-only (no update/delete),
@@ -26,10 +27,12 @@ export interface JournalEntriesQuery {
   sourceType?: string;
   from?: string;
   to?: string;
+  page?: number;
+  pageSize?: number;
 }
 
-export async function listJournalEntries(query: JournalEntriesQuery = {}): Promise<JournalEntry[]> {
-  const { data } = await apiClient.get<JournalEntry[]>("/journal-entries", { params: query });
+export async function listJournalEntries(query: JournalEntriesQuery = {}): Promise<PaginatedResult<JournalEntry>> {
+  const { data } = await apiClient.get<PaginatedResult<JournalEntry>>("/journal-entries", { params: query });
   return data;
 }
 

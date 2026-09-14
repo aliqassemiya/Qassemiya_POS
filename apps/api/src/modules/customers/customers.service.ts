@@ -1,19 +1,28 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../common/prisma/prisma.service";
 import { newId } from "../../common/utils/uuid";
-import type { CreateCustomerDto, UpdateCustomerDto } from "./customers.dto";
+import type { CreateCustomerDto, CustomerListQueryDto, UpdateCustomerDto } from "./customers.dto";
 
 @Injectable()
 export class CustomersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll(search?: string) {
-    return this.prisma.customer.findMany({
-      where: search
-        ? { OR: [{ fullName: { contains: search, mode: "insensitive" } }, { phone: { contains: search } }] }
-        : undefined,
-      orderBy: { fullName: "asc" },
-    });
+  async findAll(query: CustomerListQueryDto) {
+    const where = query.search
+      ? { OR: [{ fullName: { contains: query.search, mode: "insensitive" as const } }, { phone: { contains: query.search } }] }
+      : undefined;
+
+    const [data, totalCount] = await Promise.all([
+      this.prisma.customer.findMany({
+        where,
+        orderBy: { fullName: "asc" },
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+      }),
+      this.prisma.customer.count({ where }),
+    ]);
+
+    return { data, totalCount };
   }
 
   async findOne(id: string) {

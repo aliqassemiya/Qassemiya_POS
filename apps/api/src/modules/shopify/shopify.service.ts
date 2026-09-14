@@ -107,7 +107,17 @@ export class ShopifyService {
     return this.prisma.shopifySyncLog.findMany({ orderBy: { startedAt: "desc" }, take: 20 });
   }
 
+  async getSyncLogEntries(syncLogId: string) {
+    const log = await this.prisma.shopifySyncLog.findUnique({ where: { id: syncLogId } });
+    if (!log) throw new NotFoundException("Sync log not found");
+    return this.prisma.shopifySyncLogEntry.findMany({
+      where: { syncLogId },
+      orderBy: { orderNumber: "asc" },
+    });
+  }
+
   async findOrders(query: ShopifyOrderListQueryDto) {
+    const search = query.search?.trim();
     const where = {
       ...(query.from || query.to
         ? {
@@ -118,6 +128,14 @@ export class ShopifyService {
           }
         : {}),
       ...(query.unmatchedOnly ? { items: { some: { productVariantId: null } } } : {}),
+      ...(search
+        ? {
+            OR: [
+              { orderNumber: { contains: search, mode: "insensitive" as const } },
+              { items: { some: { sku: { contains: search, mode: "insensitive" as const } } } },
+            ],
+          }
+        : {}),
     };
 
     const [orders, totalCount] = await Promise.all([
@@ -178,10 +196,23 @@ export class ShopifyService {
       const client = new ShopifyClient(integration.shopDomain, accessToken, integration.apiVersion);
       const rawOrders = await client.fetchOrdersUpdatedSince(cursorFrom.toISOString());
 
-      let upserted = 0;
+      const entries: Array<{ orderId: string; orderNumber: string; action: "CREATED" | "UPDATED" }> = [];
       for (const raw of rawOrders) {
-        const didUpsert = await this.upsertShopifyOrder(raw);
-        if (didUpsert) upserted += 1;
+        const result = await this.upsertShopifyOrder(raw);
+        if (result) entries.push(result);
+      }
+      const upserted = entries.length;
+
+      if (entries.length > 0) {
+        await this.prisma.shopifySyncLogEntry.createMany({
+          data: entries.map((e) => ({
+            id: newId(),
+            syncLogId: log.id,
+            shopifyOrderId: e.orderId,
+            orderNumber: e.orderNumber,
+            action: e.action,
+          })),
+        });
       }
 
       await this.rematchUnmatchedItems();
@@ -218,13 +249,15 @@ export class ShopifyService {
    * touches stock_movements/inventory/journal_entries — there is no code
    * path from here into any of those tables.
    */
-  async upsertShopifyOrder(raw: ShopifyRawOrder): Promise<boolean> {
+  async upsertShopifyOrder(
+    raw: ShopifyRawOrder,
+  ): Promise<{ orderId: string; orderNumber: string; action: "CREATED" | "UPDATED" } | null> {
     const shopifyOrderId = String(raw.id);
     const shopifyUpdatedAt = new Date(raw.updated_at);
 
     const existing = await this.prisma.shopifyOrder.findUnique({ where: { shopifyOrderId } });
     // Guards against regressing on a re-fetched or (later) out-of-order webhook payload.
-    if (existing && existing.shopifyUpdatedAt >= shopifyUpdatedAt) return false;
+    if (existing && existing.shopifyUpdatedAt >= shopifyUpdatedAt) return null;
 
     const orderId = existing?.id ?? newId();
     const primaryTaxLine = raw.tax_lines?.[0];
@@ -297,7 +330,7 @@ export class ShopifyService {
       }
     });
 
-    return true;
+    return { orderId, orderNumber: raw.name, action: existing ? "UPDATED" : "CREATED" };
   }
 
   /**

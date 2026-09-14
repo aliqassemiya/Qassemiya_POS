@@ -11,11 +11,14 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/TextField";
 import { SelectField } from "@/components/ui/SelectField";
+import { Pagination } from "@/components/ui/Pagination";
 import { useAuthStore } from "@/store/authStore";
 import { useHasPermission } from "@/hooks/useHasPermission";
 import { toast } from "@/store/toastStore";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { randomUUID } from "@/lib/uuid";
+
+const PAGE_SIZE = 50;
 
 function currency(n: number) {
   return new Intl.NumberFormat("en-SA", { style: "currency", currency: "SAR" }).format(n);
@@ -189,8 +192,14 @@ export function ReturnsPage() {
   const canCreate = useHasPermission("pos.return.create");
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
+  const [page, setPage] = useState(1);
 
-  const returnsQuery = useQuery({ queryKey: ["returns"], queryFn: () => listReturns() });
+  const returnsQuery = useQuery({
+    queryKey: ["returns", page],
+    queryFn: () => listReturns({ page, pageSize: PAGE_SIZE }),
+  });
+  const returns = returnsQuery.data?.data ?? [];
+  const totalCount = returnsQuery.data?.totalCount ?? 0;
 
   return (
     <div className="flex flex-col gap-4">
@@ -204,7 +213,7 @@ export function ReturnsPage() {
           isLoading={returnsQuery.isLoading}
           isError={returnsQuery.isError}
           error={returnsQuery.error}
-          isEmpty={(returnsQuery.data?.length ?? 0) === 0}
+          isEmpty={returns.length === 0}
           emptyMessage={t("returns.empty")}
         >
           <table className="w-full text-left text-sm">
@@ -218,7 +227,7 @@ export function ReturnsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {returnsQuery.data?.map((r) => (
+              {returns.map((r) => (
                 <tr key={r.id}>
                   <td className="px-4 py-2 text-slate-600">{new Date(r.createdAt).toLocaleString()}</td>
                   <td className="px-4 py-2 text-slate-600">{r.orderId.slice(0, 8)}</td>
@@ -231,6 +240,8 @@ export function ReturnsPage() {
           </table>
         </DataState>
       </div>
+
+      <Pagination page={page} pageSize={PAGE_SIZE} totalCount={totalCount} onPageChange={setPage} />
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={t("returns.newReturn")}>
         <NewReturnForm

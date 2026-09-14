@@ -11,3 +11,10 @@ export const updateCustomerSchema = createCustomerSchema.partial();
 
 export class CreateCustomerDto extends createZodDto(createCustomerSchema) {}
 export class UpdateCustomerDto extends createZodDto(updateCustomerSchema) {}
+
+export const customerListQuerySchema = z.object({
+  search: z.string().optional(),
+  page: z.coerce.number().int().positive().default(1),
+  pageSize: z.coerce.number().int().positive().max(200).default(50),
+});
+export class CustomerListQueryDto extends createZodDto(customerListQuerySchema) {}

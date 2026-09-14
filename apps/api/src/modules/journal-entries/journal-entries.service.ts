@@ -9,26 +9,31 @@ const WITH_DETAILS = { lines: { include: { account: true } }, branch: true } as 
 export class JournalEntriesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll(query: JournalEntryListQueryDto) {
-    return this.prisma.journalEntry.findMany({
-      where: {
-        ...(query.branchId ? { branchId: query.branchId } : {}),
-        ...(query.sourceType ? { sourceType: query.sourceType } : {}),
-        ...(query.sourceId ? { sourceId: query.sourceId } : {}),
-        ...(query.from || query.to
-          ? {
-              entryDate: {
-                ...(query.from ? { gte: new Date(query.from) } : {}),
-                ...(query.to ? { lte: new Date(query.to) } : {}),
-              },
-            }
-          : {}),
-      },
-      include: WITH_DETAILS,
-      orderBy: { entryDate: "desc" },
-      skip: (query.page - 1) * query.pageSize,
-      take: query.pageSize,
-    });
+  async findAll(query: JournalEntryListQueryDto) {
+    const where = {
+      ...(query.branchId ? { branchId: query.branchId } : {}),
+      ...(query.sourceType ? { sourceType: query.sourceType } : {}),
+      ...(query.sourceId ? { sourceId: query.sourceId } : {}),
+      ...(query.from || query.to
+        ? {
+            entryDate: {
+              ...(query.from ? { gte: new Date(query.from) } : {}),
+              ...(query.to ? { lte: new Date(query.to) } : {}),
+            },
+          }
+        : {}),
+    };
+    const [data, totalCount] = await Promise.all([
+      this.prisma.journalEntry.findMany({
+        where,
+        include: WITH_DETAILS,
+        orderBy: { entryDate: "desc" },
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+      }),
+      this.prisma.journalEntry.count({ where }),
+    ]);
+    return { data, totalCount };
   }
 
   async findOne(id: string) {
