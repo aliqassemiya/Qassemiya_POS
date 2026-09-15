@@ -30,4 +30,10 @@ export class SalesController {
   void(@Param("id") id: string, @Body() dto: VoidSaleDto) {
     return this.salesService.void(id, dto);
   }
+
+  @Post(":id/payments/:paymentId/confirm")
+  @RequirePermissions("pos.payment.confirm")
+  confirmPayment(@Param("id") id: string, @Param("paymentId") paymentId: string) {
+    return this.salesService.confirmPayment(id, paymentId);
+  }
 }

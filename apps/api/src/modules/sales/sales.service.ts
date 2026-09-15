@@ -144,6 +144,7 @@ export class SalesService {
               paymentMethodId: p.paymentMethodId,
               amount: p.amount,
               referenceNumber: p.referenceNumber,
+              status: p.status,
             })),
           },
         },
@@ -279,5 +280,22 @@ export class SalesService {
     });
 
     return this.findOne(id);
+  }
+
+  /**
+   * Manually flips a PENDING payment (Tamara/Tabby, awaiting staff to check
+   * the provider's own dashboard) to COMPLETED. No GL re-posting -- the sale
+   * already posted its full GL entry at creation time (see createSaleTx);
+   * this is a pure bookkeeping flip on the payment row, not a new financial
+   * event.
+   */
+  async confirmPayment(orderId: string, paymentId: string) {
+    const payment = await this.prisma.payment.findFirst({ where: { id: paymentId, orderId } });
+    if (!payment) throw new NotFoundException("Payment not found");
+    if (payment.status === "COMPLETED") return payment; // idempotent -- re-clicking "confirm" is harmless
+    if (payment.status !== "PENDING") {
+      throw new ConflictException(`Cannot confirm a payment with status ${payment.status}`);
+    }
+    return this.prisma.payment.update({ where: { id: paymentId }, data: { status: "COMPLETED" } });
   }
 }

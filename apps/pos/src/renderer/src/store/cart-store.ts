@@ -23,11 +23,17 @@ export interface CartPaymentLine {
   methodName: string;
   amount: number;
   referenceNumber?: string;
+  // PENDING for a Tamara line awaiting manual confirmation later; omitted
+  // (-> COMPLETED) for every other payment method.
+  status?: string;
 }
 
 export interface CartCustomer {
   id: string;
   name: string;
+  // Needed for Tamara's checkout session (that's who the SMS goes to) --
+  // not required by any other payment method.
+  phone: string | null;
 }
 
 export interface CartEmployee {
@@ -40,6 +46,11 @@ interface CartStore {
   customer: CartCustomer | null;
   soldByEmployee: CartEmployee | null;
   payments: CartPaymentLine[];
+  // Reserved up front the moment a Tamara session is created, so the same
+  // id is used for both the Tamara order_reference_id and the real local
+  // order once checkout completes. Null whenever no Tamara line is in progress.
+  pendingOrderId: string | null;
+  setPendingOrderId: (id: string | null) => void;
   addItem: (item: {
     productVariantId: string;
     sku: string;
@@ -77,6 +88,8 @@ export const useCartStore = create<CartStore>((set) => ({
   customer: null,
   soldByEmployee: null,
   payments: [],
+  pendingOrderId: null,
+  setPendingOrderId: (id) => set({ pendingOrderId: id }),
 
   addItem: (input) =>
     set((state) => {
@@ -137,7 +150,7 @@ export const useCartStore = create<CartStore>((set) => ({
 
   removePayment: (key) => set((state) => ({ payments: state.payments.filter((p) => p.key !== key) })),
 
-  clear: () => set({ items: [], customer: null, soldByEmployee: null, payments: [] }),
+  clear: () => set({ items: [], customer: null, soldByEmployee: null, payments: [], pendingOrderId: null }),
 }));
 
 export function cartTotals(items: CartItem[]) {

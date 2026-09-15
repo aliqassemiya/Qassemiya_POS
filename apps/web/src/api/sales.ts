@@ -33,3 +33,7 @@ export async function voidSale(id: string, reason?: string): Promise<Order> {
   const { data } = await apiClient.post<Order>(`/sales/${id}/void`, { reason });
   return data;
 }
+
+export async function confirmPayment(orderId: string, paymentId: string): Promise<void> {
+  await apiClient.post(`/sales/${orderId}/payments/${paymentId}/confirm`);
+}

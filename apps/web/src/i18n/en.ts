@@ -83,6 +83,7 @@ export const en = {
     integrationsSection: "Integrations",
     shopifySettings: "Shopify settings",
     whatsappSettings: "WhatsApp settings",
+    tamaraSettings: "Tamara settings",
   },
   header: {
     logOut: "Log out",
@@ -756,6 +757,9 @@ export const en = {
       whatsappResendFailed: "Failed to resend WhatsApp invoice.",
       whatsappNoAttempt: "No WhatsApp message sent for this order yet.",
       whatsappViewInvoice: "View invoice page ↗",
+      markAsPaid: "Mark as Paid",
+      paymentConfirmed: "Payment confirmed.",
+      paymentConfirmFailed: "Failed to confirm payment.",
     },
   },
   shopify: {
@@ -878,6 +882,22 @@ export const en = {
     logDateColumn: "Date",
     logPhoneColumn: "Phone",
     logErrorColumn: "Error",
+  },
+  tamara: {
+    title: "Tamara Integration",
+    connectionTitle: "Connection",
+    apiKeyLabel: "API key",
+    apiKeyPlaceholderNew: "Paste your Tamara API key",
+    apiKeyPlaceholderKeep: "Leave blank to keep the current key",
+    environmentLabel: "Environment",
+    environmentSandbox: "Sandbox (testing)",
+    environmentProduction: "Production",
+    activeLabel: "Allow Tamara at checkout",
+    saved: "Tamara settings saved.",
+    saveFailed: "Failed to save Tamara settings.",
+    statusTitle: "Status",
+    notConnected: "Tamara isn't connected yet.",
+    updatedAtLabel: "Last updated",
   },
 } as const;
 

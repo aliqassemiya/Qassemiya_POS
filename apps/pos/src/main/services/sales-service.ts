@@ -21,9 +21,17 @@ export interface CheckoutPaymentInput {
   methodName: string;
   amount: number;
   referenceNumber?: string;
+  // PENDING for a Tamara/Tabby line awaiting manual confirmation later;
+  // omitted (-> COMPLETED) for every other payment method, unchanged.
+  status?: string;
 }
 
 export interface CheckoutInput {
+  // Lets the renderer reserve the order's id up front -- needed for Tamara,
+  // which must be given an order_reference_id *before* the local sale is
+  // created, so the same id ends up as the real order id end to end.
+  // Omitted for every other checkout, which still gets a fresh uuidv7() here.
+  id?: string;
   branchId: string;
   cashierUserId: string;
   soldByEmployeeId?: string | null;
@@ -46,7 +54,7 @@ export interface CheckoutResult {
 /** Writes a completed sale to local SQLite in one transaction. Never touches the network. */
 export async function createSale(input: CheckoutInput): Promise<CheckoutResult> {
   const db = getDb();
-  const orderId = uuidv7();
+  const orderId = input.id ?? uuidv7();
   const createdAt = new Date().toISOString();
 
   await db.transaction().execute(async (trx) => {
@@ -136,6 +144,7 @@ export async function createSale(input: CheckoutInput): Promise<CheckoutResult> 
           paymentMethodId: payment.paymentMethodId,
           amount: payment.amount,
           referenceNumber: payment.referenceNumber ?? null,
+          status: payment.status ?? "COMPLETED",
         })
         .execute();
     }

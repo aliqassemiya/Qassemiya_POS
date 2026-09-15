@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { getSale, voidSale } from "@/api/sales";
+import { confirmPayment, getSale, voidSale } from "@/api/sales";
 import { listWhatsAppMessageLogs, resendWhatsAppInvoice } from "@/api/whatsapp";
 import { DataState } from "@/components/ui/DataState";
 import { Button } from "@/components/ui/Button";
@@ -16,6 +16,13 @@ const WHATSAPP_STATUS_CLASSES: Record<string, string> = {
   SKIPPED: "bg-slate-100 text-slate-600",
 };
 
+const PAYMENT_STATUS_CLASSES: Record<string, string> = {
+  PENDING: "bg-amber-100 text-amber-700",
+  COMPLETED: "bg-green-100 text-green-700",
+  FAILED: "bg-red-100 text-red-700",
+  REFUNDED: "bg-slate-100 text-slate-600",
+};
+
 function currency(n: number) {
   return new Intl.NumberFormat("en-SA", { style: "currency", currency: "SAR" }).format(n);
 }
@@ -27,6 +34,7 @@ export function SaleDetailPage() {
   const queryClient = useQueryClient();
   const canVoid = useHasPermission("pos.sale.void");
   const canManageWhatsApp = useHasPermission("integrations.whatsapp.manage");
+  const canConfirmPayment = useHasPermission("pos.payment.confirm");
   const [reason, setReason] = useState("");
 
   const saleQuery = useQuery({ queryKey: ["sales", id], queryFn: () => getSale(id as string) });
@@ -52,6 +60,15 @@ export function SaleDetailPage() {
       toast.success(t("sales.detail.whatsappResent"));
     },
     onError: (err) => toast.error(getErrorMessage(err, t("sales.detail.whatsappResendFailed"))),
+  });
+
+  const confirmPaymentMutation = useMutation({
+    mutationFn: (paymentId: string) => confirmPayment(id as string, paymentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sales", id] });
+      toast.success(t("sales.detail.paymentConfirmed"));
+    },
+    onError: (err) => toast.error(getErrorMessage(err, t("sales.detail.paymentConfirmFailed"))),
   });
 
   const latestWhatsAppLog = whatsappLogsQuery.data?.[0];
@@ -140,9 +157,27 @@ export function SaleDetailPage() {
               <h2 className="mb-2 text-sm font-semibold text-slate-700">{t("sales.detail.paymentsTitle")}</h2>
               <ul className="divide-y divide-slate-100 text-sm">
                 {saleQuery.data.payments.map((p) => (
-                  <li key={p.id} className="flex justify-between py-1">
-                    <span>{p.paymentMethod?.name ?? p.paymentMethodId}</span>
-                    <span className="font-medium">{currency(p.amount)}</span>
+                  <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 py-1.5">
+                    <div className="flex items-center gap-2">
+                      <span>{p.paymentMethod?.name ?? p.paymentMethodId}</span>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${PAYMENT_STATUS_CLASSES[p.status] ?? "bg-slate-100 text-slate-600"}`}
+                      >
+                        {p.status}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{currency(p.amount)}</span>
+                      {p.status === "PENDING" && canConfirmPayment && (
+                        <Button
+                          variant="secondary"
+                          isLoading={confirmPaymentMutation.isPending && confirmPaymentMutation.variables === p.id}
+                          onClick={() => confirmPaymentMutation.mutate(p.id)}
+                        >
+                          {t("sales.detail.markAsPaid")}
+                        </Button>
+                      )}
+                    </div>
                   </li>
                 ))}
               </ul>

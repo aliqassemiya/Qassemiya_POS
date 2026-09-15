@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { uuidv7 } from "uuidv7";
 import { useSessionStore } from "../store/session-store";
 import { useCartStore, cartTotals } from "../store/cart-store";
 import { useToastStore } from "../store/toast-store";
 import { money } from "../lib/format";
+
+const TAMARA_CODE = "TAMARA";
 
 interface VariantResult {
   id: string;
@@ -42,12 +45,14 @@ export function TillScreen() {
   const { t } = useTranslation();
   const pairing = useSessionStore((s) => s.pairing);
   const session = useSessionStore((s) => s.session);
+  const online = useSessionStore((s) => s.syncStatus.online);
   const push = useToastStore((s) => s.push);
 
   const items = useCartStore((s) => s.items);
   const customer = useCartStore((s) => s.customer);
   const soldByEmployee = useCartStore((s) => s.soldByEmployee);
   const payments = useCartStore((s) => s.payments);
+  const pendingOrderId = useCartStore((s) => s.pendingOrderId);
   const addItem = useCartStore((s) => s.addItem);
   const setQuantity = useCartStore((s) => s.setQuantity);
   const setDiscount = useCartStore((s) => s.setDiscount);
@@ -57,6 +62,7 @@ export function TillScreen() {
   const addPayment = useCartStore((s) => s.addPayment);
   const updatePayment = useCartStore((s) => s.updatePayment);
   const removePayment = useCartStore((s) => s.removePayment);
+  const setPendingOrderId = useCartStore((s) => s.setPendingOrderId);
   const clearCart = useCartStore((s) => s.clear);
 
   const [scanValue, setScanValue] = useState("");
@@ -71,6 +77,7 @@ export function TillScreen() {
   const [newCustomerEmail, setNewCustomerEmail] = useState("");
   const [creatingCustomer, setCreatingCustomer] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
+  const [creatingTamaraSession, setCreatingTamaraSession] = useState(false);
   const scanRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -137,8 +144,10 @@ export function TillScreen() {
   }
 
   function openNewCustomerForm() {
-    setNewCustomerName(customerQuery.trim());
-    setNewCustomerPhone("");
+    // Staff always search by phone number first -- what they typed belongs
+    // in the phone field, with name left blank for them to fill in manually.
+    setNewCustomerName("");
+    setNewCustomerPhone(customerQuery.trim());
     setNewCustomerEmail("");
     setShowNewCustomerForm(true);
   }
@@ -155,7 +164,7 @@ export function TillScreen() {
         phone: newCustomerPhone.trim(),
         email: newCustomerEmail.trim() || undefined,
       });
-      setCustomer({ id: created.id, name: created.name });
+      setCustomer({ id: created.id, name: created.name, phone: newCustomerPhone.trim() });
       setShowNewCustomerForm(false);
       setCustomerResults([]);
       setCustomerQuery("");
@@ -169,6 +178,63 @@ export function TillScreen() {
 
   function addPaymentLine(method: PaymentMethodRow) {
     addPayment({ paymentMethodId: method.id, methodName: method.name, amount: Math.max(balanceDue, 0) });
+  }
+
+  /**
+   * Unlike every other payment method, creating a Tamara session is a live,
+   * online-only network call -- it's literally what triggers Tamara's own
+   * SMS to the customer, so it cannot be queued for later like the rest of
+   * an offline-first checkout. Reserves the order's id up front so the same
+   * id becomes the real Order.id if checkout completes.
+   */
+  async function addTamaraPaymentLine(method: PaymentMethodRow) {
+    if (!pairing?.branchId) {
+      push("error", t("till.errorMissingSession"));
+      return;
+    }
+    if (!online) {
+      push("error", t("till.errorTamaraRequiresInternet"));
+      return;
+    }
+    if (!customer?.phone) {
+      push("error", t("till.errorTamaraRequiresCustomerPhone"));
+      return;
+    }
+    const amount = Math.max(balanceDue, 0);
+    if (amount <= 0) {
+      push("error", t("till.errorTamaraAmountInvalid"));
+      return;
+    }
+    setCreatingTamaraSession(true);
+    try {
+      const orderId = pendingOrderId ?? uuidv7();
+      setPendingOrderId(orderId);
+      const result = await window.api.tamara.createCheckoutSession({
+        orderReferenceId: orderId,
+        branchId: pairing.branchId,
+        amount,
+        phoneNumber: customer.phone,
+        items: items.map((i) => ({
+          referenceId: i.productVariantId,
+          name: i.name,
+          sku: i.sku,
+          quantity: i.quantity,
+          totalAmount: i.lineTotal,
+        })),
+      });
+      addPayment({
+        paymentMethodId: method.id,
+        methodName: method.name,
+        amount,
+        referenceNumber: result.checkoutId,
+        status: "PENDING",
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      push("error", t("till.errorTamaraSessionFailed", { message }));
+    } finally {
+      setCreatingTamaraSession(false);
+    }
   }
 
   async function checkout() {
@@ -187,6 +253,7 @@ export function TillScreen() {
     setCheckingOut(true);
     try {
       const result = await window.api.sales.checkout({
+        id: pendingOrderId ?? undefined,
         branchId: pairing.branchId,
         cashierUserId: session.userId,
         soldByEmployeeId: soldByEmployee?.id ?? null,
@@ -208,6 +275,7 @@ export function TillScreen() {
           methodName: p.methodName,
           amount: p.amount,
           referenceNumber: p.referenceNumber,
+          status: p.status,
         })),
         subtotal: totals.subtotal,
         discountTotal: totals.discountTotal,
@@ -416,19 +484,19 @@ export function TillScreen() {
               onChange={(e) => void searchCustomer(e.target.value)}
             />
             {customerResults.length > 0 && (
-              <div className="search-results" style={{ maxHeight: 120 }}>
+              <div className="customer-results" style={{ maxHeight: 160 }}>
                 {customerResults.map((c) => (
                   <div
                     key={c.id}
                     className="search-result-row"
                     onClick={() => {
-                      setCustomer({ id: c.id, name: c.name });
+                      setCustomer({ id: c.id, name: c.name, phone: c.phone });
                       setCustomerResults([]);
                       setCustomerQuery("");
                     }}
                   >
                     <span>{c.name}</span>
-                    <span>{c.phone}</span>
+                    <span style={{ color: "var(--text-muted)", fontSize: 13 }}>{c.phone}</span>
                   </div>
                 ))}
               </div>
@@ -462,21 +530,49 @@ export function TillScreen() {
 
         <h3>{t("till.payment")}</h3>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
-          {paymentMethods.map((pm) => (
-            <button key={pm.id} className="btn" onClick={() => addPaymentLine(pm)}>
-              + {pm.name}
-            </button>
-          ))}
+          {paymentMethods.map((pm) =>
+            pm.code === TAMARA_CODE ? (
+              <button
+                key={pm.id}
+                className="btn"
+                disabled={!online || creatingTamaraSession}
+                title={!online ? t("till.errorTamaraRequiresInternet") : undefined}
+                onClick={() => void addTamaraPaymentLine(pm)}
+              >
+                {creatingTamaraSession
+                  ? t("till.tamaraCreatingSession")
+                  : `+ ${pm.name}${!online ? ` (${t("till.offline")})` : ""}`}
+              </button>
+            ) : (
+              <button key={pm.id} className="btn" onClick={() => addPaymentLine(pm)}>
+                + {pm.name}
+              </button>
+            ),
+          )}
         </div>
         {payments.map((p) => (
           <div key={p.key} className="payment-row">
-            <span style={{ flex: 1 }}>{p.methodName}</span>
+            <span style={{ flex: 1 }}>
+              {p.methodName}
+              {p.status === "PENDING" && (
+                <span style={{ marginLeft: 6, fontSize: 11, color: "var(--text-muted)" }}>
+                  {t("till.awaitingTamaraPayment")}
+                </span>
+              )}
+            </span>
             <input
               type="number"
               value={p.amount}
+              disabled={p.status === "PENDING"}
               onChange={(e) => updatePayment(p.key, Number(e.target.value) || 0, p.referenceNumber)}
             />
-            <button className="btn danger" onClick={() => removePayment(p.key)}>
+            <button
+              className="btn danger"
+              onClick={() => {
+                removePayment(p.key);
+                if (p.status === "PENDING") setPendingOrderId(null);
+              }}
+            >
               ×
             </button>
           </div>

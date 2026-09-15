@@ -116,6 +116,7 @@ export interface PaymentTable {
   paymentMethodId: string;
   amount: number;
   referenceNumber: string | null;
+  status: string;
 }
 
 export interface ReturnTable {

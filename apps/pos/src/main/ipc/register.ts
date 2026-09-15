@@ -1,8 +1,9 @@
 import { ipcMain, type BrowserWindow } from "electron";
-import { IpcChannels, type AppLanguage, type CheckoutRequest, type CreateCustomerRequest, type CreateReturnRequest, type PairDeviceRequest, type PinLoginRequest } from "../../shared/ipc";
+import { IpcChannels, type AppLanguage, type CheckoutRequest, type CreateCustomerRequest, type CreateReturnRequest, type PairDeviceRequest, type PinLoginRequest, type TamaraCreateSessionRequest } from "../../shared/ipc";
 import { pairDevice, getPairingState, pinLogin, logout, getCurrentSession, listPublicBranches, unpairDevice } from "../services/auth-service";
 import { searchVariants, lookupByBarcode, listPaymentMethods, listEmployees, searchCustomers, createCustomer } from "../services/catalog-service";
 import { createSale, listRecentOrders, getOrderWithItems, createReturn } from "../services/sales-service";
+import { createTamaraCheckoutSession } from "../services/tamara-service";
 import { printReceipt, openCashDrawer, type ReceiptData } from "../printer/printer-bridge";
 import { getMeta, setMeta, LocalMetaKey } from "../db/local-meta";
 import { syncWorker } from "../sync/sync-worker";
@@ -39,6 +40,8 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
   ipcMain.handle(IpcChannels.SEARCH_CUSTOMERS, (_e, query: string) => searchCustomers(query));
 
   ipcMain.handle(IpcChannels.CREATE_CUSTOMER, (_e, req: CreateCustomerRequest) => createCustomer(req));
+
+  ipcMain.handle(IpcChannels.TAMARA_CREATE_SESSION, (_e, req: TamaraCreateSessionRequest) => createTamaraCheckoutSession(req));
 
   ipcMain.handle(IpcChannels.CHECKOUT, async (_e, req: CheckoutRequest) => {
     const result = await createSale(req);

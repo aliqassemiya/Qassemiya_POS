@@ -240,6 +240,32 @@ select {
   margin-bottom: 14px;
   padding: 4px 2px;
 }
+
+.customer-results {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: auto;
+  margin-bottom: 10px;
+}
+.search-result-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background-color 0.12s ease;
+}
+.search-result-row:last-child {
+  border-bottom: none;
+}
+.search-result-row:hover {
+  background-color: var(--panel);
+}
+
 .product-card {
   display: flex;
   flex-direction: column;

@@ -95,6 +95,13 @@ export const en = {
     toastSaleComplete: "Sale complete — order {{orderId}}",
     toastPrintIssueSuffix: " (print issue, see settings)",
     errorCheckoutFailed: "Checkout failed: {{message}}",
+    errorTamaraRequiresInternet: "Tamara requires an internet connection",
+    errorTamaraRequiresCustomerPhone: "Select a customer with a phone number to use Tamara",
+    errorTamaraAmountInvalid: "Enter a valid amount before using Tamara",
+    errorTamaraSessionFailed: "Could not create Tamara checkout session: {{message}}",
+    tamaraCreatingSession: "Sending to Tamara…",
+    offline: "offline",
+    awaitingTamaraPayment: "(awaiting Tamara payment)",
   },
   returns: {
     recentOrders: "Recent orders",

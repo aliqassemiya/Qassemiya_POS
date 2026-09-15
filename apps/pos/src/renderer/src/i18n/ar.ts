@@ -97,6 +97,13 @@ export const ar = {
     toastSaleComplete: "تمت عملية البيع — طلب {{orderId}}",
     toastPrintIssueSuffix: " (مشكلة في الطباعة، راجع الإعدادات)",
     errorCheckoutFailed: "فشلت عملية الدفع: {{message}}",
+    errorTamaraRequiresInternet: "تتطلب Tamara اتصالاً بالإنترنت",
+    errorTamaraRequiresCustomerPhone: "اختر عميلاً لديه رقم هاتف لاستخدام Tamara",
+    errorTamaraAmountInvalid: "أدخل مبلغاً صحيحاً قبل استخدام Tamara",
+    errorTamaraSessionFailed: "تعذر إنشاء جلسة الدفع مع Tamara: {{message}}",
+    tamaraCreatingSession: "جارٍ الإرسال إلى Tamara…",
+    offline: "غير متصل",
+    awaitingTamaraPayment: "(في انتظار الدفع عبر Tamara)",
   },
   returns: {
     recentOrders: "الطلبات الأخيرة",

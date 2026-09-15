@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { OrderSource } from "./enums";
+import { OrderSource, PaymentStatus } from "./enums";
 
 export const saleItemSchema = z.object({
   // Client-generated (matches Order.id's own convention) so a return created
@@ -21,6 +21,10 @@ export const salePaymentSchema = z.object({
   paymentMethodId: z.string().uuid(),
   amount: z.number().positive(),
   referenceNumber: z.string().optional(),
+  // PENDING for BNPL methods (Tamara/Tabby) awaiting manual confirmation;
+  // every other caller omits this and gets the normal instant-COMPLETED
+  // behavior unchanged.
+  status: z.nativeEnum(PaymentStatus).default(PaymentStatus.COMPLETED),
 });
 export type SalePaymentInput = z.infer<typeof salePaymentSchema>;
 

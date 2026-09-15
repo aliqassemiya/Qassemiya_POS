@@ -26,6 +26,8 @@ export const IpcChannels = {
   GET_ORDER: "sales:get-order",
   CREATE_RETURN: "sales:create-return",
 
+  TAMARA_CREATE_SESSION: "tamara:create-session",
+
   PRINT_RECEIPT: "printer:print-receipt",
   OPEN_CASH_DRAWER: "printer:open-cash-drawer",
   GET_PRINTER_SETTINGS: "printer:get-settings",
@@ -58,6 +60,9 @@ export interface PinLoginRequest {
 }
 
 export interface CheckoutRequest {
+  // Set only when a Tamara payment line already reserved this id up front
+  // (see TamaraCreateSessionRequest) -- omitted for every other checkout.
+  id?: string;
   branchId: string;
   cashierUserId: string;
   soldByEmployeeId?: string | null;
@@ -79,12 +84,36 @@ export interface CheckoutRequest {
     methodName: string;
     amount: number;
     referenceNumber?: string;
+    status?: string;
   }>;
   subtotal: number;
   discountTotal: number;
   taxTotal: number;
   total: number;
   notes?: string;
+}
+
+export interface TamaraCreateSessionRequest {
+  // Reserved order id (uuidv7, generated in the renderer) -- sent to Tamara
+  // as order_reference_id, then reused as the real Order.id if checkout
+  // completes, so staff have one consistent id across both systems.
+  orderReferenceId: string;
+  branchId: string;
+  amount: number;
+  phoneNumber: string;
+  items: Array<{
+    referenceId: string;
+    name: string;
+    sku: string;
+    quantity: number;
+    totalAmount: number;
+  }>;
+}
+
+export interface TamaraCreateSessionResult {
+  checkoutId: string;
+  tamaraOrderId: string;
+  checkoutDeeplink: string;
 }
 
 export interface CreateReturnRequest {

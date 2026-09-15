@@ -1051,3 +1051,39 @@ model WhatsAppMessageLog {
   @@index([orderId])
   @@map("whatsapp_message_logs")
 }
+
+// ---------- Tamara BNPL ----------
+// A cashier selects Tamara at the till; we create an in-store checkout
+// session with Tamara's API and Tamara texts the customer a payment link
+// directly -- we never send anything ourselves. Payment doesn't clear at the
+// register, so it's recorded as a PENDING Payment until staff manually
+// confirm it later (checked against Tamara's own merchant dashboard).
+model TamaraIntegration {
+  id           String   @id
+  apiKeyCipher String
+  apiKeyIv     String
+  apiKeyTag    String
+  environment  String   @default("sandbox") // "sandbox" | "production"
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("tamara_integrations")
+}
+
+// No FK to Order -- this is created *before* the order exists server-side
+// (the POS creates orders locally first, syncs later), so an FK would force
+// an ordering constraint that doesn't hold.
+model TamaraCheckoutLog {
+  id               String   @id
+  orderReferenceId String
+  checkoutId       String?
+  tamaraOrderId    String?
+  checkoutDeeplink String?
+  status           String // CREATED | FAILED
+  errorMessage     String?
+  createdAt        DateTime @default(now())
+
+  @@index([orderReferenceId])
+  @@map("tamara_checkout_logs")
+}

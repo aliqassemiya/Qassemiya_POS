@@ -1,5 +1,5 @@
 import type { SyncBundle } from "@qassemiya/shared-types";
-import { OrderSource } from "@qassemiya/shared-types";
+import { OrderSource, PaymentStatus } from "@qassemiya/shared-types";
 import { getDb } from "../db";
 
 /** Builds the exact SyncBundle (kind: "SALE") wire shape for one locally-created order. */
@@ -35,6 +35,7 @@ export async function buildSaleBundle(orderId: string): Promise<SyncBundle | nul
         paymentMethodId: payment.paymentMethodId,
         amount: payment.amount,
         referenceNumber: payment.referenceNumber ?? undefined,
+        status: (payment.status as (typeof PaymentStatus)[keyof typeof PaymentStatus]) ?? PaymentStatus.COMPLETED,
       })),
       subtotal: order.subtotal,
       discountTotal: order.discountTotal,

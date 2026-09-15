@@ -130,5 +130,7 @@ export const PERMISSIONS = [
   "integrations.shopify.manage",
   "reports.channel.view",
   "integrations.whatsapp.manage",
+  "integrations.tamara.manage",
+  "pos.payment.confirm",
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
