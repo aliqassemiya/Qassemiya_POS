@@ -2,7 +2,7 @@ import { ipcMain, type BrowserWindow } from "electron";
 import { IpcChannels, type AppLanguage, type CheckoutRequest, type CreateCustomerRequest, type CreateReturnRequest, type PairDeviceRequest, type PinLoginRequest, type TamaraCreateSessionRequest, type TabbyCreateSessionRequest } from "../../shared/ipc";
 import { pairDevice, getPairingState, pinLogin, logout, getCurrentSession, listPublicBranches, unpairDevice } from "../services/auth-service";
 import { searchVariants, lookupByBarcode, listPaymentMethods, listEmployees, searchCustomers, createCustomer } from "../services/catalog-service";
-import { createSale, listRecentOrders, getOrderWithItems, createReturn } from "../services/sales-service";
+import { createSale, listRecentOrders, getOrderWithItems, createReturn, searchServerOrders } from "../services/sales-service";
 import { createTamaraCheckoutSession } from "../services/tamara-service";
 import { createTabbyCheckoutSession } from "../services/tabby-service";
 import { printReceipt, openCashDrawer, type ReceiptData } from "../printer/printer-bridge";
@@ -71,6 +71,8 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
   });
 
   ipcMain.handle(IpcChannels.LIST_ORDERS, async (_e, branchId: string) => listRecentOrders(branchId));
+
+  ipcMain.handle(IpcChannels.SEARCH_SERVER_ORDERS, async (_e, query: string) => searchServerOrders(query));
 
   ipcMain.handle(IpcChannels.GET_ORDER, async (_e, orderId: string) => getOrderWithItems(orderId));
 

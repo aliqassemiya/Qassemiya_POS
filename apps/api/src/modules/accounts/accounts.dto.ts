@@ -14,7 +14,9 @@ export class AccountListQueryDto extends createZodDto(accountListQuerySchema) {}
 
 export const accountLedgerQuerySchema = z.object({
   branchId: z.string().uuid().optional(),
-  from: z.string().datetime().optional(),
-  to: z.string().datetime().optional(),
+  // Plain "YYYY-MM-DD" -- what every <input type="date"> in the web app
+  // actually sends; not a full ISO datetime string.
+  from: z.string().date().optional(),
+  to: z.string().date().optional(),
 });
 export class AccountLedgerQueryDto extends createZodDto(accountLedgerQuerySchema) {}

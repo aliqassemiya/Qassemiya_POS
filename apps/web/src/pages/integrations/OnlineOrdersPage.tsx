@@ -6,6 +6,7 @@ import { DataState } from "@/components/ui/DataState";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Pagination } from "@/components/ui/Pagination";
+import { useUrlState, useUrlNumberState, useUrlBooleanState } from "@/hooks/useUrlState";
 
 const PAGE_SIZE = 50;
 
@@ -15,11 +16,11 @@ function currency(n: number, code: string) {
 
 export function OnlineOrdersPage() {
   const { t } = useTranslation();
-  const [search, setSearch] = useState("");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
-  const [unmatchedOnly, setUnmatchedOnly] = useState(false);
-  const [page, setPage] = useState(1);
+  const [search, setSearch] = useUrlState("search");
+  const [from, setFrom] = useUrlState("from");
+  const [to, setTo] = useUrlState("to");
+  const [unmatchedOnly, setUnmatchedOnly] = useUrlBooleanState("unmatchedOnly");
+  const [page, setPage] = useUrlNumberState("page", 1);
   const [selected, setSelected] = useState<ShopifyOrder | null>(null);
 
   const ordersQuery = useQuery({

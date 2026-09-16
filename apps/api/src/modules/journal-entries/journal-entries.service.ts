@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../common/prisma/prisma.service";
 import { postJournalEntry } from "../../common/accounting/journal-ledger";
+import { startOfDayRiyadh, endOfDayRiyadh } from "../../common/utils/date-range";
 import type { CreateJournalEntryDto, JournalEntryListQueryDto } from "./journal-entries.dto";
 
 const WITH_DETAILS = { lines: { include: { account: true } }, branch: true } as const;
@@ -17,8 +18,8 @@ export class JournalEntriesService {
       ...(query.from || query.to
         ? {
             entryDate: {
-              ...(query.from ? { gte: new Date(query.from) } : {}),
-              ...(query.to ? { lte: new Date(query.to) } : {}),
+              ...(query.from ? { gte: startOfDayRiyadh(query.from) } : {}),
+              ...(query.to ? { lte: endOfDayRiyadh(query.to) } : {}),
             },
           }
         : {}),

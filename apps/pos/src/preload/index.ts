@@ -33,6 +33,7 @@ const api = {
   sales: {
     checkout: (req: CheckoutRequest) => ipcRenderer.invoke(IpcChannels.CHECKOUT, req),
     listOrders: (branchId: string) => ipcRenderer.invoke(IpcChannels.LIST_ORDERS, branchId),
+    searchServerOrders: (query: string) => ipcRenderer.invoke(IpcChannels.SEARCH_SERVER_ORDERS, query),
     getOrder: (orderId: string) => ipcRenderer.invoke(IpcChannels.GET_ORDER, orderId),
     createReturn: (req: CreateReturnRequest) => ipcRenderer.invoke(IpcChannels.CREATE_RETURN, req),
   },

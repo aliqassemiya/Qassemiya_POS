@@ -37,11 +37,11 @@ export class SyncService {
 
     try {
       if (bundle.kind === "SALE") {
-        const existing = await this.prisma.order.findUnique({ where: { id } });
-        if (existing) return { id, status: "ALREADY_EXISTS", serverTimestamp };
+        const existing = await this.prisma.order.findUnique({ where: { id }, select: { orderNumber: true } });
+        if (existing) return { id, status: "ALREADY_EXISTS", serverTimestamp, orderNumber: existing.orderNumber };
 
-        await this.salesService.createSaleTx(bundle.payload, new Date(bundle.clientCreatedAt));
-        return { id, status: "ACCEPTED", serverTimestamp };
+        const { orderNumber } = await this.salesService.createSaleTx(bundle.payload, new Date(bundle.clientCreatedAt));
+        return { id, status: "ACCEPTED", serverTimestamp, orderNumber };
       }
 
       // kind === "RETURN"

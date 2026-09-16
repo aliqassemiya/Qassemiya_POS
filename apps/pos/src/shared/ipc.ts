@@ -23,6 +23,7 @@ export const IpcChannels = {
 
   CHECKOUT: "sales:checkout",
   LIST_ORDERS: "sales:list-orders",
+  SEARCH_SERVER_ORDERS: "sales:search-server-orders",
   GET_ORDER: "sales:get-order",
   CREATE_RETURN: "sales:create-return",
 

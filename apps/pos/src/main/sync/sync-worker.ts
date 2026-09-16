@@ -4,6 +4,7 @@ import { getMeta, setMeta, LocalMetaKey } from "../db/local-meta";
 import { getApiClient, primeApiUrlCache, getCachedApiUrl } from "../api-client";
 import { ConnectivityMonitor } from "./connectivity";
 import { buildSaleBundle, buildReturnBundle } from "./build-bundle";
+import { backfillOrderNumbers } from "../services/sales-service";
 import type { SyncCatalogResponse } from "./catalog-types";
 
 const POLL_INTERVAL_MS = 15_000;
@@ -196,7 +197,7 @@ export class SyncWorker {
       const response = await client.post<SyncPushResponse>("/sync/push", { deviceUuid, bundles });
 
       for (const result of response.data.results) {
-        await this.applyResult(result.id, result.status, result.error ?? null);
+        await this.applyResult(result.id, result.status, result.error ?? null, result.orderNumber ?? null);
       }
       this.lastSyncAt = new Date().toISOString();
       this.lastError = null;
@@ -210,7 +211,7 @@ export class SyncWorker {
     }
   }
 
-  private async applyResult(id: string, status: SyncBundleStatus, error: string | null): Promise<void> {
+  private async applyResult(id: string, status: SyncBundleStatus, error: string | null, orderNumber: string | null = null): Promise<void> {
     const db = getDb();
     const nowIso = new Date().toISOString();
 
@@ -219,7 +220,7 @@ export class SyncWorker {
       this.nextAttemptAt.delete(`RETURN:${id}`);
       const orderUpdate = await db
         .updateTable("order")
-        .set({ syncedAt: nowIso, lastSyncError: null })
+        .set({ syncedAt: nowIso, lastSyncError: null, ...(orderNumber ? { orderNumber } : {}) })
         .where("id", "=", id)
         .where("syncedAt", "is", null)
         .executeTakeFirst();
@@ -277,6 +278,10 @@ export class SyncWorker {
     } catch (err) {
       this.lastError = err instanceof Error ? err.message : String(err);
     }
+
+    // Piggybacks on the same interval -- cheap, best-effort, and harmless to
+    // skip a tick if it fails (see backfillOrderNumbers's own try/catch).
+    await backfillOrderNumbers();
   }
 
   private async applyCatalog(data: SyncCatalogResponse): Promise<void> {

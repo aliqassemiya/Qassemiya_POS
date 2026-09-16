@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { listBranches } from "@/api/branches";
@@ -12,7 +11,7 @@ import {
 import { DataState } from "@/components/ui/DataState";
 import { ExportMenu } from "@/components/ui/ExportMenu";
 import { useAuthStore } from "@/store/authStore";
-import { endOfDayIso } from "@/lib/dateRange";
+import { useUrlState } from "@/hooks/useUrlState";
 
 function currency(n: number) {
   return new Intl.NumberFormat("en-SA", { style: "currency", currency: "SAR" }).format(n);
@@ -39,41 +38,37 @@ export function FinancialReportsPage() {
   const { t } = useTranslation();
   const activeBranchId = useAuthStore((s) => s.activeBranchId);
   const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: listBranches });
-  const [branchId, setBranchId] = useState(activeBranchId ?? "");
+  const [branchId, setBranchId] = useUrlState("branchId", activeBranchId ?? "");
 
   const today = new Date();
   const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
-  const [from, setFrom] = useState(isoDate(monthAgo));
-  const [to, setTo] = useState(isoDate(today));
-  const [asOf, setAsOf] = useState(isoDate(today));
-
-  const fromIso = new Date(from).toISOString();
-  const toIso = endOfDayIso(to);
-  const asOfIso = endOfDayIso(asOf);
+  const [from, setFrom] = useUrlState("from", isoDate(monthAgo));
+  const [to, setTo] = useUrlState("to", isoDate(today));
+  const [asOf, setAsOf] = useUrlState("asOf", isoDate(today));
 
   const trialBalanceQuery = useQuery({
     queryKey: ["reports", "trial-balance", branchId, from, to],
-    queryFn: () => getTrialBalance({ branchId: branchId || undefined, from: fromIso, to: toIso }),
+    queryFn: () => getTrialBalance({ branchId: branchId || undefined, from, to }),
   });
 
   const profitAndLossQuery = useQuery({
     queryKey: ["reports", "profit-and-loss", branchId, from, to],
-    queryFn: () => getProfitAndLoss({ branchId: branchId || undefined, from: fromIso, to: toIso }),
+    queryFn: () => getProfitAndLoss({ branchId: branchId || undefined, from, to }),
   });
 
   const balanceSheetQuery = useQuery({
     queryKey: ["reports", "balance-sheet", branchId, asOf],
-    queryFn: () => getBalanceSheet({ branchId: branchId || undefined, asOf: asOfIso }),
+    queryFn: () => getBalanceSheet({ branchId: branchId || undefined, asOf }),
   });
 
   const cashFlowQuery = useQuery({
     queryKey: ["reports", "cash-flow", branchId, from, to],
-    queryFn: () => getCashFlow({ branchId: branchId || undefined, from: fromIso, to: toIso }),
+    queryFn: () => getCashFlow({ branchId: branchId || undefined, from, to }),
   });
 
   const vatSummaryQuery = useQuery({
     queryKey: ["reports", "vat-summary", branchId, from, to],
-    queryFn: () => getVatSummary({ branchId: branchId || undefined, from: fromIso, to: toIso }),
+    queryFn: () => getVatSummary({ branchId: branchId || undefined, from, to }),
   });
 
   const trialBalanceRows = (trialBalanceQuery.data?.rows ?? []).map((row) => ({

@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { listBranches } from "@/api/branches";
@@ -6,7 +5,7 @@ import { getChannelComparison } from "@/api/reports";
 import { DataState } from "@/components/ui/DataState";
 import { ExportMenu } from "@/components/ui/ExportMenu";
 import { useAuthStore } from "@/store/authStore";
-import { endOfDayIso } from "@/lib/dateRange";
+import { useUrlState } from "@/hooks/useUrlState";
 
 function currency(n: number) {
   return new Intl.NumberFormat("en-SA", { style: "currency", currency: "SAR" }).format(n);
@@ -20,20 +19,22 @@ export function ChannelComparisonPage() {
   const { t } = useTranslation();
   const activeBranchId = useAuthStore((s) => s.activeBranchId);
   const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: listBranches });
-  const [branchId, setBranchId] = useState(activeBranchId ?? "");
+  const [branchId, setBranchId] = useUrlState("branchId", activeBranchId ?? "");
 
   const today = new Date();
   const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
-  const [from, setFrom] = useState(isoDate(monthAgo));
-  const [to, setTo] = useState(isoDate(today));
+  const [from, setFrom] = useUrlState("from", isoDate(monthAgo));
+  const [to, setTo] = useUrlState("to", isoDate(today));
 
   const comparisonQuery = useQuery({
     queryKey: ["reports", "channel-comparison", branchId, from, to],
     queryFn: () =>
       getChannelComparison({
         branchId: branchId || undefined,
-        from: new Date(from).toISOString(),
-        to: endOfDayIso(to),
+        // Plain "YYYY-MM-DD" -- the API resolves this to the correct
+        // Riyadh-local day boundary itself (see date-range.ts server-side).
+        from: from || undefined,
+        to: to || undefined,
       }),
   });
 

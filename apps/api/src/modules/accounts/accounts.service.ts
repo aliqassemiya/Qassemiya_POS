@@ -1,6 +1,7 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../common/prisma/prisma.service";
 import { newId } from "../../common/utils/uuid";
+import { startOfDayRiyadh, endOfDayRiyadh } from "../../common/utils/date-range";
 import type { AccountLedgerQueryDto, AccountListQueryDto, CreateAccountDto, UpdateAccountDto } from "./accounts.dto";
 
 @Injectable()
@@ -60,8 +61,8 @@ export class AccountsService {
           ...(query.from || query.to
             ? {
                 entryDate: {
-                  ...(query.from ? { gte: new Date(query.from) } : {}),
-                  ...(query.to ? { lte: new Date(query.to) } : {}),
+                  ...(query.from ? { gte: startOfDayRiyadh(query.from) } : {}),
+                  ...(query.to ? { lte: endOfDayRiyadh(query.to) } : {}),
                 },
               }
             : {}),

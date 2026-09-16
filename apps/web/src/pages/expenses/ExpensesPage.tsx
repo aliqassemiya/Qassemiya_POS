@@ -18,7 +18,7 @@ import { useHasPermission } from "@/hooks/useHasPermission";
 import { useAuthStore } from "@/store/authStore";
 import { toast } from "@/store/toastStore";
 import { getErrorMessage } from "@/lib/errorMessage";
-import { endOfDayIso } from "@/lib/dateRange";
+import { useUrlState } from "@/hooks/useUrlState";
 
 function currency(n: number) {
   return new Intl.NumberFormat("en-SA", { style: "currency", currency: "SAR" }).format(n);
@@ -128,12 +128,12 @@ export function ExpensesPage() {
   const canManage = useHasPermission("expenses.manage");
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
-  const [branchId, setBranchId] = useState("");
+  const [branchId, setBranchId] = useUrlState("branchId");
 
   const today = new Date();
   const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
-  const [from, setFrom] = useState(isoDate(monthAgo));
-  const [to, setTo] = useState(isoDate(today));
+  const [from, setFrom] = useUrlState("from", isoDate(monthAgo));
+  const [to, setTo] = useUrlState("to", isoDate(today));
 
   const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: listBranches });
 
@@ -142,8 +142,10 @@ export function ExpensesPage() {
     queryFn: () =>
       listExpenses({
         branchId: branchId || undefined,
-        from: from ? new Date(from).toISOString() : undefined,
-        to: to ? endOfDayIso(to) : undefined,
+        // Plain "YYYY-MM-DD" -- the API resolves this to the correct
+        // Riyadh-local day boundary itself (see date-range.ts server-side).
+        from: from || undefined,
+        to: to || undefined,
       }),
   });
 

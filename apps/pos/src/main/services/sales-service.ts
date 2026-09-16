@@ -3,6 +3,7 @@ import { uuidv7 } from "uuidv7";
 import { StockMovementType, OrderSource } from "@qassemiya/shared-types";
 import { getDb } from "../db";
 import { syncWorker } from "../sync/sync-worker";
+import { getApiClient } from "../api-client";
 
 export interface CheckoutItemInput {
   productVariantId: string;
@@ -77,6 +78,7 @@ export async function createSale(input: CheckoutInput): Promise<CheckoutResult> 
         syncedAt: null,
         syncAttempts: 0,
         lastSyncError: null,
+        orderNumber: null,
       })
       .execute();
 
@@ -158,6 +160,7 @@ export async function createSale(input: CheckoutInput): Promise<CheckoutResult> 
 
 export interface OrderSummary {
   id: string;
+  orderNumber: string | null;
   createdAt: string;
   total: number;
   status: string;
@@ -168,7 +171,7 @@ export interface OrderSummary {
 export async function listRecentOrders(branchId: string, limit = 50): Promise<OrderSummary[]> {
   const rows = await getDb()
     .selectFrom("order")
-    .select(["id", "createdAt", "total", "status", "syncedAt", "customerId"])
+    .select(["id", "orderNumber", "createdAt", "total", "status", "syncedAt", "customerId"])
     .where("branchId", "=", branchId)
     .orderBy("createdAt", "desc")
     .limit(limit)
@@ -176,10 +179,105 @@ export async function listRecentOrders(branchId: string, limit = 50): Promise<Or
   return rows;
 }
 
+/**
+ * One-time (well, ongoing) catch-up for orders that finished syncing
+ * *before* the sequential-order-number feature existed to record the
+ * number -- pushPending() only ever revisits orders with syncedAt IS NULL,
+ * so an already-synced order's orderNumber would otherwise stay null
+ * forever. Safe to call repeatedly and offline (just no-ops).
+ */
+export async function backfillOrderNumbers(): Promise<void> {
+  if (!syncWorker.isOnline()) return;
+  const db = getDb();
+  const rows = await db
+    .selectFrom("order")
+    .select(["id"])
+    .where("syncedAt", "is not", null)
+    .where("orderNumber", "is", null)
+    .limit(50)
+    .execute();
+  if (rows.length === 0) return;
+
+  try {
+    const client = getApiClient();
+    const { data } = await client.get("/sales", { params: { ids: rows.map((r) => r.id).join(","), pageSize: 50 } });
+    for (const order of data.data ?? []) {
+      if (!order.orderNumber) continue;
+      await db.updateTable("order").set({ orderNumber: order.orderNumber }).where("id", "=", order.id).execute();
+    }
+  } catch {
+    // Best-effort -- will retry on the next tick.
+  }
+}
+
+export interface ServerOrderSummary {
+  id: string;
+  orderNumber: string | null;
+  branchName: string;
+  createdAt: string;
+  total: number;
+}
+
+/**
+ * Looks up orders across EVERY branch, not just this till's own -- this is
+ * what lets a cashier find and return an order rung up somewhere else
+ * entirely. Inherently online-only: there is no local cache of other
+ * branches'/tills' orders to fall back to.
+ */
+export async function searchServerOrders(query: string): Promise<ServerOrderSummary[]> {
+  if (!syncWorker.isOnline()) {
+    throw new Error("Searching orders from other branches requires an internet connection");
+  }
+  const client = getApiClient();
+  const { data } = await client.get("/sales", { params: { search: query, pageSize: 20 } });
+  return (data.data ?? []).map((order: any) => ({
+    id: order.id,
+    orderNumber: order.orderNumber ?? null,
+    branchName: order.branch?.nameAr ?? order.branch?.name ?? "",
+    createdAt: order.createdAt,
+    total: Number(order.total),
+  }));
+}
+
+/**
+ * Not found locally means it wasn't rung up on this till -- falls back to
+ * looking it up on the server (a different branch or a different till at
+ * this same branch), which is the only place that would know about it.
+ * Silently returns null when offline, same as "not found" -- there's
+ * nothing else to fall back to.
+ */
+async function getRemoteOrderWithItems(orderId: string) {
+  if (!syncWorker.isOnline()) return null;
+  try {
+    const client = getApiClient();
+    const { data } = await client.get(`/sales/${orderId}`);
+    return {
+      order: { id: data.id, branchId: data.branchId, status: data.status },
+      orderNumber: data.orderNumber ?? null,
+      branchName: data.branch?.nameAr ?? data.branch?.name ?? null,
+      customerName: data.customer?.fullName ?? null,
+      customerPhone: data.customer?.phone ?? null,
+      items: (data.items ?? []).map((item: any) => ({
+        id: item.id,
+        productVariantId: item.productVariantId,
+        quantity: item.quantity,
+        unitPrice: Number(item.unitPrice),
+        lineTotal: Number(item.lineTotal),
+        sku: item.productVariant?.sku ?? "",
+        productName: item.productVariant?.product?.name ?? "",
+        alreadyReturned: item.alreadyReturned ?? 0,
+      })),
+      payments: [],
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function getOrderWithItems(orderId: string) {
   const db = getDb();
   const order = await db.selectFrom("order").selectAll().where("id", "=", orderId).executeTakeFirst();
-  if (!order) return null;
+  if (!order) return getRemoteOrderWithItems(orderId);
   const items = await db
     .selectFrom("orderItem as oi")
     .innerJoin("productVariant as pv", "pv.id", "oi.productVariantId")
@@ -205,8 +303,16 @@ export async function getOrderWithItems(orderId: string) {
     .execute();
   const returnedMap = new Map(alreadyReturnedByItem.map((r) => [r.orderItemId, Number(r.qty)]));
 
+  const customer = order.customerId
+    ? await db.selectFrom("customer").select(["name", "phone"]).where("id", "=", order.customerId).executeTakeFirst()
+    : null;
+
   return {
     order,
+    orderNumber: order.orderNumber,
+    branchName: null,
+    customerName: customer?.name ?? null,
+    customerPhone: customer?.phone ?? null,
     items: items.map((i) => ({ ...i, alreadyReturned: returnedMap.get(i.id) ?? 0 })),
     payments,
   };
@@ -231,10 +337,49 @@ export interface CreateReturnInputLocal {
   totalRefundAmount: number;
 }
 
+/**
+ * Cross-branch/cross-till return: the order was never rung up on this till,
+ * so there's no local row for `return.order_id` to reference (a real FK
+ * constraint) -- submitted directly to the server instead. Online-only,
+ * same reasoning as the Tamara/Tabby checkout-session calls: there's no
+ * offline queue for something with no local order to attach to.
+ */
+async function createRemoteReturn(
+  returnId: string,
+  createdAt: string,
+  input: CreateReturnInputLocal,
+): Promise<{ returnId: string; createdAt: string }> {
+  if (!syncWorker.isOnline()) {
+    throw new Error("Processing a return for an order from another branch requires an internet connection");
+  }
+  const client = getApiClient();
+  const { data } = await client.post("/returns", {
+    id: returnId,
+    orderId: input.orderId,
+    branchId: input.branchId,
+    processedByUserId: input.processedByUserId,
+    refundPaymentMethodId: input.refundPaymentMethodId,
+    reason: input.reason,
+    items: input.items.map((item) => ({
+      orderItemId: item.orderItemId,
+      quantity: item.quantity,
+      refundAmount: item.refundAmount,
+      restocked: item.restocked,
+    })),
+    totalRefundAmount: input.totalRefundAmount,
+  });
+  return { returnId: data.id, createdAt: data.createdAt };
+}
+
 export async function createReturn(input: CreateReturnInputLocal): Promise<{ returnId: string; createdAt: string }> {
   const db = getDb();
   const returnId = uuidv7();
   const createdAt = new Date().toISOString();
+
+  const localOrder = await db.selectFrom("order").select(["id"]).where("id", "=", input.orderId).executeTakeFirst();
+  if (!localOrder) {
+    return createRemoteReturn(returnId, createdAt, input);
+  }
 
   await db.transaction().execute(async (trx) => {
     await trx

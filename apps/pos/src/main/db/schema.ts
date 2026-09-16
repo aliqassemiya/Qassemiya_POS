@@ -96,6 +96,9 @@ export interface OrderTable {
   syncedAt: string | null;
   syncAttempts: number;
   lastSyncError: string | null;
+  // Sequential number assigned server-side at sync time (see sync-worker.ts's
+  // applyResult) -- null until the order has actually synced.
+  orderNumber: string | null;
 }
 
 export interface OrderItemTable {

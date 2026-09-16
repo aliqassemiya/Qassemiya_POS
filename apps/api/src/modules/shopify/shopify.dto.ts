@@ -22,8 +22,10 @@ export class TestShopifyConnectionDto extends createZodDto(testShopifyConnection
 export const shopifyOrderListQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(200).default(50),
-  from: z.string().datetime().optional(),
-  to: z.string().datetime().optional(),
+  // Plain "YYYY-MM-DD" -- what every <input type="date"> in the web app
+  // actually sends; not a full ISO datetime string.
+  from: z.string().date().optional(),
+  to: z.string().date().optional(),
   unmatchedOnly: z.coerce.boolean().optional(),
   // Matches order number (e.g. "#1001" or just "1001") OR any line item's SKU.
   search: z.string().trim().optional(),

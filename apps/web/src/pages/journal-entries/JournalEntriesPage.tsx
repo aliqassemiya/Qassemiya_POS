@@ -21,7 +21,7 @@ import { Pagination } from "@/components/ui/Pagination";
 import { useHasPermission } from "@/hooks/useHasPermission";
 import { toast } from "@/store/toastStore";
 import { getErrorMessage } from "@/lib/errorMessage";
-import { endOfDayIso } from "@/lib/dateRange";
+import { useUrlState, useUrlNumberState } from "@/hooks/useUrlState";
 
 const PAGE_SIZE = 50;
 
@@ -221,14 +221,14 @@ export function JournalEntriesPage() {
   const canManage = useHasPermission("journal.manage");
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
-  const [branchId, setBranchId] = useState("");
-  const [sourceType, setSourceType] = useState("");
+  const [branchId, setBranchId] = useUrlState("branchId");
+  const [sourceType, setSourceType] = useUrlState("sourceType");
 
   const today = new Date();
   const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
-  const [from, setFrom] = useState(isoDate(monthAgo));
-  const [to, setTo] = useState(isoDate(today));
-  const [page, setPage] = useState(1);
+  const [from, setFrom] = useUrlState("from", isoDate(monthAgo));
+  const [to, setTo] = useUrlState("to", isoDate(today));
+  const [page, setPage] = useUrlNumberState("page", 1);
 
   const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: listBranches });
 
@@ -238,8 +238,10 @@ export function JournalEntriesPage() {
       listJournalEntries({
         branchId: branchId || undefined,
         sourceType: sourceType || undefined,
-        from: from ? new Date(from).toISOString() : undefined,
-        to: to ? endOfDayIso(to) : undefined,
+        // Plain "YYYY-MM-DD" -- the API resolves this to the correct
+        // Riyadh-local day boundary itself (see date-range.ts server-side).
+        from: from || undefined,
+        to: to || undefined,
         page,
         pageSize: PAGE_SIZE,
       }),

@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from "@nes
 import { Cron, CronExpression } from "@nestjs/schedule";
 import { PrismaService } from "../../common/prisma/prisma.service";
 import { newId } from "../../common/utils/uuid";
+import { RIYADH_OFFSET_MS, startOfDayRiyadh, endOfDayRiyadh } from "../../common/utils/date-range";
 import { decryptToken, encryptToken } from "../../common/crypto/token-cipher";
 import { ShopifyClient, type ShopifyRawLineItem, type ShopifyRawOrder } from "./shopify-client";
 import type { Prisma } from "../../../generated/prisma";
@@ -10,7 +11,6 @@ import type { TestShopifyConnectionDto, UpsertShopifyIntegrationDto, ShopifyOrde
 const DEFAULT_API_VERSION = "2024-10";
 const OVERLAP_LOCK_STALE_MS = 15 * 60 * 1000;
 const CURSOR_OVERLAP_BUFFER_MS = 2 * 60 * 1000;
-const RIYADH_OFFSET_MS = 3 * 60 * 60 * 1000;
 const TOKEN_ENC_KEY_VAR = "SHOPIFY_TOKEN_ENC_KEY";
 
 /**
@@ -126,8 +126,8 @@ export class ShopifyService {
       ...(query.from || query.to
         ? {
             shopifyCreatedAt: {
-              ...(query.from ? { gte: new Date(query.from) } : {}),
-              ...(query.to ? { lte: new Date(query.to) } : {}),
+              ...(query.from ? { gte: startOfDayRiyadh(query.from) } : {}),
+              ...(query.to ? { lte: endOfDayRiyadh(query.to) } : {}),
             },
           }
         : {}),

@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -9,6 +8,7 @@ import { listEmployees } from "@/api/employees";
 import { DataState } from "@/components/ui/DataState";
 import { Pagination } from "@/components/ui/Pagination";
 import { useAuthStore } from "@/store/authStore";
+import { useUrlState, useUrlNumberState } from "@/hooks/useUrlState";
 
 const PAGE_SIZE = 50;
 
@@ -30,13 +30,13 @@ export function SalesPage() {
   const paymentMethodsQuery = useQuery({ queryKey: ["payment-methods"], queryFn: listPaymentMethods });
   // pageSize 500 — this dropdown needs the full roster, not one page of it.
   const employeesQuery = useQuery({ queryKey: ["employees"], queryFn: () => listEmployees({ pageSize: 500 }) });
-  const [branchId, setBranchId] = useState(activeBranchId ?? "");
-  const [paymentMethodId, setPaymentMethodId] = useState("");
-  const [soldByEmployeeId, setSoldByEmployeeId] = useState("");
-  const [search, setSearch] = useState("");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
-  const [page, setPage] = useState(1);
+  const [branchId, setBranchId] = useUrlState("branchId", activeBranchId ?? "");
+  const [paymentMethodId, setPaymentMethodId] = useUrlState("paymentMethodId");
+  const [soldByEmployeeId, setSoldByEmployeeId] = useUrlState("soldByEmployeeId");
+  const [search, setSearch] = useUrlState("search");
+  const [from, setFrom] = useUrlState("from");
+  const [to, setTo] = useUrlState("to");
+  const [page, setPage] = useUrlNumberState("page", 1);
 
   const salesQuery = useQuery({
     queryKey: ["sales", branchId, paymentMethodId, soldByEmployeeId, search, from, to, page],

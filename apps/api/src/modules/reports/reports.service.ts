@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../../common/prisma/prisma.service";
+import { startOfDayRiyadh, endOfDayRiyadh } from "../../common/utils/date-range";
 import type {
   BalanceSheetQueryDto,
   CashFlowQueryDto,
@@ -27,7 +28,7 @@ function typeBalance(type: string, debit: number, credit: number): number {
 
 function dateRangeWhere(from?: string, to?: string) {
   if (!from && !to) return {};
-  return { entryDate: { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lte: new Date(to) } : {}) } };
+  return { entryDate: { ...(from ? { gte: startOfDayRiyadh(from) } : {}), ...(to ? { lte: endOfDayRiyadh(to) } : {}) } };
 }
 
 // Shared by salesTrend and onlineSalesTrend — both the bucket keys AND the
@@ -51,8 +52,8 @@ export class ReportsService {
       ...(query.from || query.to
         ? {
             createdAt: {
-              ...(query.from ? { gte: new Date(query.from) } : {}),
-              ...(query.to ? { lte: new Date(query.to) } : {}),
+              ...(query.from ? { gte: startOfDayRiyadh(query.from) } : {}),
+              ...(query.to ? { lte: endOfDayRiyadh(query.to) } : {}),
             },
           }
         : {}),
@@ -96,8 +97,8 @@ export class ReportsService {
    * days when no range is given.
    */
   async salesTrend(query: SalesTrendQueryDto) {
-    const to = query.to ? new Date(query.to) : new Date();
-    const from = query.from ? new Date(query.from) : new Date(to.getTime() - 6 * 24 * 60 * 60 * 1000);
+    const to = query.to ? endOfDayRiyadh(query.to) : new Date();
+    const from = query.from ? startOfDayRiyadh(query.from) : new Date(to.getTime() - 6 * 24 * 60 * 60 * 1000);
 
     const orders = await this.prisma.order.findMany({
       where: {
@@ -139,8 +140,8 @@ export class ReportsService {
    * channelComparison's online-total convention so the two stay consistent.
    */
   async onlineSalesTrend(query: OnlineSalesTrendQueryDto) {
-    const to = query.to ? new Date(query.to) : new Date();
-    const from = query.from ? new Date(query.from) : new Date(to.getTime() - 6 * 24 * 60 * 60 * 1000);
+    const to = query.to ? endOfDayRiyadh(query.to) : new Date();
+    const from = query.from ? startOfDayRiyadh(query.from) : new Date(to.getTime() - 6 * 24 * 60 * 60 * 1000);
 
     const orders = await this.prisma.shopifyOrder.findMany({
       where: {
@@ -193,8 +194,8 @@ export class ReportsService {
           ...(query.from || query.to
             ? {
                 createdAt: {
-                  ...(query.from ? { gte: new Date(query.from) } : {}),
-                  ...(query.to ? { lte: new Date(query.to) } : {}),
+                  ...(query.from ? { gte: startOfDayRiyadh(query.from) } : {}),
+                  ...(query.to ? { lte: endOfDayRiyadh(query.to) } : {}),
                 },
               }
             : {}),
@@ -270,8 +271,8 @@ export class ReportsService {
    * online figure is always company-wide.
    */
   async channelComparison(query: ChannelComparisonQueryDto) {
-    const from = query.from ? new Date(query.from) : undefined;
-    const to = query.to ? new Date(query.to) : undefined;
+    const from = query.from ? startOfDayRiyadh(query.from) : undefined;
+    const to = query.to ? endOfDayRiyadh(query.to) : undefined;
     const dateWhere = (field: string) =>
       from || to ? { [field]: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {};
 
@@ -528,7 +529,7 @@ export class ReportsService {
   async balanceSheet(query: BalanceSheetQueryDto) {
     const journalWhere = {
       ...(query.branchId ? { branchId: query.branchId } : {}),
-      ...(query.asOf ? { entryDate: { lte: new Date(query.asOf) } } : {}),
+      ...(query.asOf ? { entryDate: { lte: endOfDayRiyadh(query.asOf) } } : {}),
     };
 
     const [groups, accounts] = await Promise.all([
@@ -603,11 +604,11 @@ export class ReportsService {
 
     const [openingGroups, closingGroups] = await Promise.all([
       query.from
-        ? this.prisma.journalLine.groupBy({ by: ["accountId"], where: scopedWhere({ lt: new Date(query.from) }), _sum: { debit: true, credit: true } })
+        ? this.prisma.journalLine.groupBy({ by: ["accountId"], where: scopedWhere({ lt: startOfDayRiyadh(query.from) }), _sum: { debit: true, credit: true } })
         : Promise.resolve([]),
       this.prisma.journalLine.groupBy({
         by: ["accountId"],
-        where: scopedWhere(query.to ? { lte: new Date(query.to) } : undefined),
+        where: scopedWhere(query.to ? { lte: endOfDayRiyadh(query.to) } : undefined),
         _sum: { debit: true, credit: true },
       }),
     ]);

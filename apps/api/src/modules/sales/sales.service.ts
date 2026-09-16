@@ -3,6 +3,7 @@ import { PrismaService } from "../../common/prisma/prisma.service";
 import { applyStockMovement } from "../../common/inventory/stock-ledger";
 import { postJournalEntry, resolveAccountIdByCode, resolvePaymentAccountId } from "../../common/accounting/journal-ledger";
 import { newId } from "../../common/utils/uuid";
+import { startOfDayRiyadh, endOfDayRiyadh } from "../../common/utils/date-range";
 import { WhatsappService } from "../whatsapp/whatsapp.service";
 import type { CreateSaleInput } from "@qassemiya/shared-types";
 import type { CreateSaleDto, SalesListQueryDto, VoidSaleDto } from "./sales.dto";
@@ -28,17 +29,19 @@ export class SalesService {
 
   async findAll(query: SalesListQueryDto) {
     const where = {
+      ...(query.ids ? { id: { in: query.ids.split(",").filter(Boolean) } } : {}),
       ...(query.branchId ? { branchId: query.branchId } : {}),
       ...(query.cashierUserId ? { cashierUserId: query.cashierUserId } : {}),
       ...(query.soldByEmployeeId ? { soldByEmployeeId: query.soldByEmployeeId } : {}),
       ...(query.paymentMethodId ? { payments: { some: { paymentMethodId: query.paymentMethodId } } } : {}),
       ...(query.from || query.to
-        ? { createdAt: { ...(query.from ? { gte: new Date(query.from) } : {}), ...(query.to ? { lte: new Date(query.to) } : {}) } }
+        ? { createdAt: { ...(query.from ? { gte: startOfDayRiyadh(query.from) } : {}), ...(query.to ? { lte: endOfDayRiyadh(query.to) } : {}) } }
         : {}),
       ...(query.search
         ? {
             OR: [
               { id: { startsWith: query.search, mode: "insensitive" as const } },
+              { orderNumber: { contains: query.search } },
               { items: { some: { productVariant: { sku: { contains: query.search, mode: "insensitive" as const } } } } },
             ],
           }
@@ -64,7 +67,7 @@ export class SalesService {
 
   async findOne(id: string) {
     const order = await this.prisma.order.findUnique({ where: { id }, include: WITH_DETAILS });
-    if (order) return order;
+    if (order) return this.attachAlreadyReturned(order);
 
     // Full order ids are 36-char UUIDs; the printed receipt only shows the
     // first 8 characters (see printer-bridge.ts's `Order: ${id.slice(0,8)}`)
@@ -75,10 +78,32 @@ export class SalesService {
         where: { id: { startsWith: id } },
         include: WITH_DETAILS,
       });
-      if (prefixMatch) return prefixMatch;
+      if (prefixMatch) return this.attachAlreadyReturned(prefixMatch);
     }
 
     throw new NotFoundException("Order not found");
+  }
+
+  /**
+   * Per-item already-returned quantities -- the till's own local database
+   * computes this itself for orders it created locally, but that join can
+   * only ever see returns processed at THAT till. Once an order can be
+   * looked up remotely (a different branch/till), the server's view here is
+   * the only authoritative source, so it's attached to every findOne result.
+   */
+  private async attachAlreadyReturned<T extends { id: string; items: Array<{ id: string }> }>(order: T) {
+    const returnItems = await this.prisma.returnItem.findMany({
+      where: { orderItem: { orderId: order.id } },
+      select: { orderItemId: true, quantity: true },
+    });
+    const returnedMap = new Map<string, number>();
+    for (const ri of returnItems) {
+      returnedMap.set(ri.orderItemId, (returnedMap.get(ri.orderItemId) ?? 0) + ri.quantity);
+    }
+    return {
+      ...order,
+      items: order.items.map((item) => ({ ...item, alreadyReturned: returnedMap.get(item.id) ?? 0 })),
+    };
   }
 
   async create(dto: CreateSaleDto) {
@@ -90,8 +115,8 @@ export class SalesService {
   }
 
   /** Shared by the direct REST endpoint and the sync module. Caller must have already checked for id collisions if idempotency matters. */
-  async createSaleTx(input: CreateSaleInput, clientCreatedAt?: Date) {
-    await this.prisma.$transaction(async (tx) => {
+  async createSaleTx(input: CreateSaleInput, clientCreatedAt?: Date): Promise<{ orderNumber: string }> {
+    const orderNumber = await this.prisma.$transaction(async (tx) => {
       // Human-friendly sequential invoice number: branch.code + an 8-digit
       // zero-padded per-branch counter (e.g. "20100000020"). Assigned here,
       // at commit time, because it's the one place both the direct REST path
@@ -212,6 +237,8 @@ export class SalesService {
         createdByUserId: input.cashierUserId,
         lines,
       });
+
+      return orderNumber;
     });
 
     // Fire-and-forget, deliberately not awaited — a WhatsApp/network failure
@@ -221,6 +248,8 @@ export class SalesService {
     this.whatsappService.sendInvoiceForOrder(input.id).catch((err) => {
       this.logger.error(`WhatsApp invoice send failed for order ${input.id}: ${err}`);
     });
+
+    return { orderNumber };
   }
 
   /**

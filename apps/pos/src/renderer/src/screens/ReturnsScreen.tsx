@@ -6,10 +6,19 @@ import { money, formatDateTime } from "../lib/format";
 
 interface OrderSummary {
   id: string;
+  orderNumber: string | null;
   createdAt: string;
   total: number;
   status: string;
   syncedAt: string | null;
+}
+
+interface ServerOrderSummary {
+  id: string;
+  orderNumber: string | null;
+  branchName: string;
+  createdAt: string;
+  total: number;
 }
 
 interface OrderItemRow {
@@ -37,6 +46,10 @@ export function ReturnsScreen() {
 
   const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [selectedOrderNumber, setSelectedOrderNumber] = useState<string | null>(null);
+  const [selectedBranchName, setSelectedBranchName] = useState<string | null>(null);
+  const [selectedCustomerName, setSelectedCustomerName] = useState<string | null>(null);
+  const [selectedCustomerPhone, setSelectedCustomerPhone] = useState<string | null>(null);
   const [items, setItems] = useState<OrderItemRow[]>([]);
   const [returnQty, setReturnQty] = useState<Record<string, number>>({});
   const [restock, setRestock] = useState<Record<string, boolean>>({});
@@ -44,6 +57,9 @@ export function ReturnsScreen() {
   const [processing, setProcessing] = useState(false);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodRow[]>([]);
   const [refundPaymentMethodId, setRefundPaymentMethodId] = useState("");
+  const [serverQuery, setServerQuery] = useState("");
+  const [serverResults, setServerResults] = useState<ServerOrderSummary[]>([]);
+  const [searchingServer, setSearchingServer] = useState(false);
 
   useEffect(() => {
     if (pairing?.branchId) {
@@ -57,14 +73,48 @@ export function ReturnsScreen() {
     const data = await window.api.sales.getOrder(orderId);
     if (data) {
       setItems(data.items);
+      setSelectedOrderNumber(data.orderNumber ?? null);
+      setSelectedBranchName(data.branchName ?? null);
+      setSelectedCustomerName(data.customerName ?? null);
+      setSelectedCustomerPhone(data.customerPhone ?? null);
       setReturnQty({});
       setRestock(Object.fromEntries(data.items.map((i: OrderItemRow) => [i.id, true])));
+    } else {
+      setSelectedOrderId(null);
+      push("error", t("returns.errorOrderNotFound"));
+    }
+  }
+
+  async function searchServer() {
+    if (!serverQuery.trim()) return;
+    setSearchingServer(true);
+    try {
+      const results = await window.api.sales.searchServerOrders(serverQuery.trim());
+      setServerResults(results);
+      if (results.length === 0) push("error", t("returns.errorNoServerResults"));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      push("error", t("returns.errorServerSearchFailed", { message }));
+    } finally {
+      setSearchingServer(false);
     }
   }
 
   function maxReturnable(item: OrderItemRow): number {
     return Math.max(item.quantity - item.alreadyReturned, 0);
   }
+
+  // Live preview of the refund total, using the exact same per-line formula
+  // processReturn() uses when actually submitting -- kept in sync so what's
+  // shown here always matches what gets charged.
+  const currentReturnTotal =
+    Math.round(
+      items.reduce((sum, i) => {
+        const qty = Math.min(returnQty[i.id] ?? 0, maxReturnable(i));
+        if (qty <= 0) return sum;
+        return sum + (i.lineTotal / i.quantity) * qty;
+      }, 0) * 100,
+    ) / 100;
 
   async function processReturn() {
     if (!selectedOrderId || !pairing?.branchId || !session?.userId) return;
@@ -106,9 +156,15 @@ export function ReturnsScreen() {
       });
       push("success", t("returns.toastReturnProcessed", { amount: money(totalRefundAmount) }));
       setSelectedOrderId(null);
+      setSelectedOrderNumber(null);
+      setSelectedBranchName(null);
+      setSelectedCustomerName(null);
+      setSelectedCustomerPhone(null);
       setItems([]);
       setReason("");
       setRefundPaymentMethodId("");
+      setServerResults([]);
+      setServerQuery("");
       const refreshed = await window.api.sales.listOrders(pairing.branchId);
       setOrders(refreshed);
     } catch (err) {
@@ -122,12 +178,42 @@ export function ReturnsScreen() {
   return (
     <div className="till-layout">
       <div className="panel">
+        <h3 style={{ marginTop: 0 }}>{t("returns.searchAnyBranch")}</h3>
+        <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+          <input
+            className="field"
+            style={{ flex: 1, padding: 8 }}
+            placeholder={t("returns.searchAnyBranchPlaceholder")}
+            value={serverQuery}
+            onChange={(e) => setServerQuery(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && void searchServer()}
+          />
+          <button className="btn" onClick={() => void searchServer()} disabled={searchingServer}>
+            {searchingServer ? t("returns.searching") : t("returns.search")}
+          </button>
+        </div>
+        {serverResults.length > 0 && (
+          <div className="order-list" style={{ maxHeight: 240, flexShrink: 0, marginBottom: 16 }}>
+            {serverResults.map((o) => (
+              <div key={o.id} className={`order-row ${selectedOrderId === o.id ? "selected" : ""}`} onClick={() => selectOrder(o.id)}>
+                <div>
+                  <div>#{o.orderNumber ?? o.id.slice(0, 8)}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                    {o.branchName} · {formatDateTime(o.createdAt)}
+                  </div>
+                </div>
+                <div style={{ textAlign: "end" }}>{money(o.total)}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
         <h3 style={{ marginTop: 0 }}>{t("returns.recentOrders")}</h3>
-        <div className="order-list">
+        <div className="order-list" style={{ flex: 1, minHeight: 0 }}>
           {orders.map((o) => (
             <div key={o.id} className={`order-row ${selectedOrderId === o.id ? "selected" : ""}`} onClick={() => selectOrder(o.id)}>
               <div>
-                <div>{o.id.slice(0, 8)}</div>
+                <div>#{o.orderNumber ?? o.id.slice(0, 8)}</div>
                 <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{formatDateTime(o.createdAt)}</div>
               </div>
               <div style={{ textAlign: "end" }}>
@@ -145,6 +231,21 @@ export function ReturnsScreen() {
         {!selectedOrderId && <p style={{ color: "var(--text-muted)" }}>{t("returns.selectOrderHint")}</p>}
         {selectedOrderId && (
           <>
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontWeight: 600 }}>
+                {t("returns.orderNumberLabel")} #{selectedOrderNumber ?? selectedOrderId.slice(0, 8)}
+              </div>
+              <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+                {selectedCustomerName
+                  ? `${selectedCustomerName}${selectedCustomerPhone ? ` · ${selectedCustomerPhone}` : ""}`
+                  : t("returns.walkInCustomer")}
+              </div>
+              {selectedBranchName && (
+                <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+                  {t("returns.originallySoldAt", { branch: selectedBranchName })}
+                </div>
+              )}
+            </div>
             <table className="cart-table">
               <thead>
                 <tr>
@@ -185,6 +286,10 @@ export function ReturnsScreen() {
                 ))}
               </tbody>
             </table>
+            <div className="totals-row grand" style={{ marginTop: 12 }}>
+              <span>{t("returns.refundTotalLabel")}</span>
+              <span>{money(currentReturnTotal)}</span>
+            </div>
             <div className="field" style={{ marginTop: 12 }}>
               <label>{t("returns.refundMethodLabel")}</label>
               <select value={refundPaymentMethodId} onChange={(e) => setRefundPaymentMethodId(e.target.value)}>

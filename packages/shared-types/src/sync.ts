@@ -24,6 +24,9 @@ export const syncPushResultSchema = z.object({
   status: z.nativeEnum(SyncBundleStatus),
   serverTimestamp: z.string().datetime(),
   error: z.string().optional(),
+  // Only set for SALE bundles -- the sequential order number assigned
+  // server-side at commit time, which the till has no way to know otherwise.
+  orderNumber: z.string().nullable().optional(),
 });
 export type SyncPushResult = z.infer<typeof syncPushResultSchema>;
 

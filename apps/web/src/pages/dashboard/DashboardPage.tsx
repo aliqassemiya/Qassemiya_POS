@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
@@ -17,8 +17,8 @@ import {
 import { getOnlineSalesTrend, getSalesSummary, getSalesTrend } from "@/api/reports";
 import { useAuthStore } from "@/store/authStore";
 import { DataState } from "@/components/ui/DataState";
-import { endOfDayIso } from "@/lib/dateRange";
 import { useHasPermission } from "@/hooks/useHasPermission";
+import { useUrlState } from "@/hooks/useUrlState";
 
 type PresetKey = "today" | "yesterday" | "last7" | "last30" | "last90" | "last365" | "custom";
 
@@ -32,32 +32,35 @@ const PRESET_KEYS: { key: PresetKey; labelKey: string }[] = [
   { key: "custom", labelKey: "dashboard.presetCustom" },
 ];
 
-function startOfDay(d: Date) {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
-}
-function endOfDay(d: Date) {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+// The viewer's local calendar date as "YYYY-MM-DD" -- what every date-picker
+// elsewhere in the app also sends. The API resolves this to the correct
+// Riyadh-local day boundary itself (see date-range.ts server-side); the
+// upper bound only ever needs to round up to end-of-day rather than the
+// exact current moment, since a sale can never have a future createdAt, so
+// rounding it changes nothing about which rows match.
+function localIsoDate(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 /** Resolves a preset key into a concrete [from, to] range, anchored to "now" at call time. */
 function resolvePresetRange(preset: PresetKey, now: Date): { from: string; to: string } {
   switch (preset) {
     case "today":
-      return { from: startOfDay(now).toISOString(), to: now.toISOString() };
+      return { from: localIsoDate(now), to: localIsoDate(now) };
     case "yesterday": {
       const y = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-      return { from: startOfDay(y).toISOString(), to: endOfDay(y).toISOString() };
+      return { from: localIsoDate(y), to: localIsoDate(y) };
     }
     case "last7":
-      return { from: startOfDay(new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000)).toISOString(), to: now.toISOString() };
+      return { from: localIsoDate(new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000)), to: localIsoDate(now) };
     case "last30":
-      return { from: startOfDay(new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000)).toISOString(), to: now.toISOString() };
+      return { from: localIsoDate(new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000)), to: localIsoDate(now) };
     case "last90":
-      return { from: startOfDay(new Date(now.getTime() - 89 * 24 * 60 * 60 * 1000)).toISOString(), to: now.toISOString() };
+      return { from: localIsoDate(new Date(now.getTime() - 89 * 24 * 60 * 60 * 1000)), to: localIsoDate(now) };
     case "last365":
-      return { from: startOfDay(new Date(now.getTime() - 364 * 24 * 60 * 60 * 1000)).toISOString(), to: now.toISOString() };
+      return { from: localIsoDate(new Date(now.getTime() - 364 * 24 * 60 * 60 * 1000)), to: localIsoDate(now) };
     default:
-      return { from: startOfDay(now).toISOString(), to: now.toISOString() };
+      return { from: localIsoDate(now), to: localIsoDate(now) };
   }
 }
 
@@ -79,20 +82,16 @@ export function DashboardPage() {
   const { t } = useTranslation();
   const activeBranchId = useAuthStore((s) => s.activeBranchId);
   const canViewOnlineSales = useHasPermission("reports.channel.view");
-  const [preset, setPreset] = useState<PresetKey>("last7");
+  const [preset, setPreset] = useUrlState("preset", "last7");
 
-  // Anchored once per mount so a rolling-window preset (e.g. "today", whose
-  // `to` is `now.toISOString()`) doesn't recompute a new `to` on every
-  // render — that previously churned the query key into an infinite
-  // refetch loop that never stabilized out of "loading".
+  // Anchored once per mount so a rolling-window preset doesn't recompute a
+  // new `to` on every render — that previously churned the query key into
+  // an infinite refetch loop that never stabilized out of "loading".
   const now = useMemo(() => new Date(), []);
-  const [customFrom, setCustomFrom] = useState(isoDate(new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000)));
-  const [customTo, setCustomTo] = useState(isoDate(now));
+  const [customFrom, setCustomFrom] = useUrlState("from", isoDate(new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000)));
+  const [customTo, setCustomTo] = useUrlState("to", isoDate(now));
 
-  const { from, to } =
-    preset === "custom"
-      ? { from: new Date(customFrom).toISOString(), to: endOfDayIso(customTo) }
-      : resolvePresetRange(preset, now);
+  const { from, to } = preset === "custom" ? { from: customFrom, to: customTo } : resolvePresetRange(preset as PresetKey, now);
 
   const summaryQuery = useQuery({
     queryKey: ["reports", "sales-summary", activeBranchId, from, to],
