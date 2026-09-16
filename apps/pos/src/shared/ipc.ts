@@ -27,6 +27,7 @@ export const IpcChannels = {
   CREATE_RETURN: "sales:create-return",
 
   TAMARA_CREATE_SESSION: "tamara:create-session",
+  TABBY_CREATE_SESSION: "tabby:create-session",
 
   PRINT_RECEIPT: "printer:print-receipt",
   OPEN_CASH_DRAWER: "printer:open-cash-drawer",
@@ -114,6 +115,24 @@ export interface TamaraCreateSessionResult {
   checkoutId: string;
   tamaraOrderId: string;
   checkoutDeeplink: string;
+}
+
+export interface TabbyCreateSessionRequest {
+  // Same reserved-order-id convention as Tamara's request.
+  orderReferenceId: string;
+  branchId: string;
+  amount: number;
+  phoneNumber: string;
+  items: Array<{
+    title: string;
+    quantity: number;
+    unitPrice: number;
+  }>;
+}
+
+export interface TabbyCreateSessionResult {
+  sessionId: string;
+  paymentId: string;
 }
 
 export interface CreateReturnRequest {

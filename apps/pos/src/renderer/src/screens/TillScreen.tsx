@@ -7,6 +7,9 @@ import { useToastStore } from "../store/toast-store";
 import { money } from "../lib/format";
 
 const TAMARA_CODE = "TAMARA";
+const TABBY_CODE = "TABBY";
+const BNPL_CODES = new Set([TAMARA_CODE, TABBY_CODE]);
+const BNPL_DISPLAY_NAMES: Record<string, string> = { [TAMARA_CODE]: "Tamara", [TABBY_CODE]: "Tabby" };
 
 interface VariantResult {
   id: string;
@@ -77,7 +80,9 @@ export function TillScreen() {
   const [newCustomerEmail, setNewCustomerEmail] = useState("");
   const [creatingCustomer, setCreatingCustomer] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
-  const [creatingTamaraSession, setCreatingTamaraSession] = useState(false);
+  // Tracks which BNPL provider's session-creation call is in flight (or null)
+  // so only that provider's button shows a loading state.
+  const [creatingBnplFor, setCreatingBnplFor] = useState<string | null>(null);
   const scanRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -181,59 +186,73 @@ export function TillScreen() {
   }
 
   /**
-   * Unlike every other payment method, creating a Tamara session is a live,
-   * online-only network call -- it's literally what triggers Tamara's own
-   * SMS to the customer, so it cannot be queued for later like the rest of
-   * an offline-first checkout. Reserves the order's id up front so the same
-   * id becomes the real Order.id if checkout completes.
+   * Unlike every other payment method, creating a Tamara/Tabby session is a
+   * live, online-only network call -- it's literally what triggers the
+   * provider's own SMS to the customer, so it cannot be queued for later
+   * like the rest of an offline-first checkout. Reserves the order's id up
+   * front so the same id becomes the real Order.id if checkout completes.
    */
-  async function addTamaraPaymentLine(method: PaymentMethodRow) {
+  async function addBnplPaymentLine(method: PaymentMethodRow) {
+    const providerName = BNPL_DISPLAY_NAMES[method.code] ?? method.name;
     if (!pairing?.branchId) {
       push("error", t("till.errorMissingSession"));
       return;
     }
     if (!online) {
-      push("error", t("till.errorTamaraRequiresInternet"));
+      push("error", t("till.errorBnplRequiresInternet", { provider: providerName }));
       return;
     }
     if (!customer?.phone) {
-      push("error", t("till.errorTamaraRequiresCustomerPhone"));
+      push("error", t("till.errorBnplRequiresCustomerPhone", { provider: providerName }));
       return;
     }
     const amount = Math.max(balanceDue, 0);
     if (amount <= 0) {
-      push("error", t("till.errorTamaraAmountInvalid"));
+      push("error", t("till.errorBnplAmountInvalid", { provider: providerName }));
       return;
     }
-    setCreatingTamaraSession(true);
+    setCreatingBnplFor(method.code);
     try {
       const orderId = pendingOrderId ?? uuidv7();
       setPendingOrderId(orderId);
-      const result = await window.api.tamara.createCheckoutSession({
-        orderReferenceId: orderId,
-        branchId: pairing.branchId,
-        amount,
-        phoneNumber: customer.phone,
-        items: items.map((i) => ({
-          referenceId: i.productVariantId,
-          name: i.name,
-          sku: i.sku,
-          quantity: i.quantity,
-          totalAmount: i.lineTotal,
-        })),
-      });
+      let referenceNumber: string;
+      if (method.code === TAMARA_CODE) {
+        const result = await window.api.tamara.createCheckoutSession({
+          orderReferenceId: orderId,
+          branchId: pairing.branchId,
+          amount,
+          phoneNumber: customer.phone,
+          items: items.map((i) => ({
+            referenceId: i.productVariantId,
+            name: i.name,
+            sku: i.sku,
+            quantity: i.quantity,
+            totalAmount: i.lineTotal,
+          })),
+        });
+        referenceNumber = result.checkoutId;
+      } else {
+        const result = await window.api.tabby.createCheckoutSession({
+          orderReferenceId: orderId,
+          branchId: pairing.branchId,
+          amount,
+          phoneNumber: customer.phone,
+          items: items.map((i) => ({ title: i.name, quantity: i.quantity, unitPrice: i.unitPrice })),
+        });
+        referenceNumber = result.sessionId;
+      }
       addPayment({
         paymentMethodId: method.id,
         methodName: method.name,
         amount,
-        referenceNumber: result.checkoutId,
+        referenceNumber,
         status: "PENDING",
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      push("error", t("till.errorTamaraSessionFailed", { message }));
+      push("error", t("till.errorBnplSessionFailed", { provider: providerName, message }));
     } finally {
-      setCreatingTamaraSession(false);
+      setCreatingBnplFor(null);
     }
   }
 
@@ -531,16 +550,16 @@ export function TillScreen() {
         <h3>{t("till.payment")}</h3>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
           {paymentMethods.map((pm) =>
-            pm.code === TAMARA_CODE ? (
+            BNPL_CODES.has(pm.code) ? (
               <button
                 key={pm.id}
                 className="btn"
-                disabled={!online || creatingTamaraSession}
-                title={!online ? t("till.errorTamaraRequiresInternet") : undefined}
-                onClick={() => void addTamaraPaymentLine(pm)}
+                disabled={!online || creatingBnplFor !== null}
+                title={!online ? t("till.errorBnplRequiresInternet", { provider: BNPL_DISPLAY_NAMES[pm.code] ?? pm.name }) : undefined}
+                onClick={() => void addBnplPaymentLine(pm)}
               >
-                {creatingTamaraSession
-                  ? t("till.tamaraCreatingSession")
+                {creatingBnplFor === pm.code
+                  ? t("till.bnplCreatingSession", { provider: BNPL_DISPLAY_NAMES[pm.code] ?? pm.name })
                   : `+ ${pm.name}${!online ? ` (${t("till.offline")})` : ""}`}
               </button>
             ) : (
@@ -556,7 +575,7 @@ export function TillScreen() {
               {p.methodName}
               {p.status === "PENDING" && (
                 <span style={{ marginLeft: 6, fontSize: 11, color: "var(--text-muted)" }}>
-                  {t("till.awaitingTamaraPayment")}
+                  {t("till.awaitingBnplPayment")}
                 </span>
               )}
             </span>

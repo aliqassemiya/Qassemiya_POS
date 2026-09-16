@@ -132,5 +132,6 @@ export const PERMISSIONS = [
   "integrations.whatsapp.manage",
   "integrations.tamara.manage",
   "pos.payment.confirm",
+  "integrations.tabby.manage",
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];

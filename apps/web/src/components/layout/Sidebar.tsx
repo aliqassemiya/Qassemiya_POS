@@ -64,6 +64,7 @@ const INTEGRATIONS_NAV_ITEMS: NavItem[] = [
   { to: "/integrations/shopify", labelKey: "shopifySettings", anyOf: ["integrations.shopify.manage"] },
   { to: "/integrations/whatsapp", labelKey: "whatsappSettings", anyOf: ["integrations.whatsapp.manage"] },
   { to: "/integrations/tamara", labelKey: "tamaraSettings", anyOf: ["integrations.tamara.manage"] },
+  { to: "/integrations/tabby", labelKey: "tabbySettings", anyOf: ["integrations.tabby.manage"] },
 ];
 
 const linkClasses = ({ isActive }: { isActive: boolean }) =>

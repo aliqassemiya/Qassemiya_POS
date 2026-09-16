@@ -1087,3 +1087,38 @@ model TamaraCheckoutLog {
   @@index([orderReferenceId])
   @@map("tamara_checkout_logs")
 }
+
+// ---------- Tabby BNPL ----------
+// Same shape as Tamara: create an in-store checkout session, ask Tabby to
+// text the customer a payment link (a separate "send SMS" call, unlike
+// Tamara's single-call flow), and record the payment as PENDING until staff
+// manually confirm it via Tabby's own merchant dashboard. Public Key isn't
+// stored -- Tabby's own docs confirm only the Secret Key and Merchant Code
+// are used anywhere in this server-to-server flow.
+model TabbyIntegration {
+  id              String   @id
+  secretKeyCipher String
+  secretKeyIv     String
+  secretKeyTag    String
+  merchantCode    String
+  region          String   @default("KSA") // "KSA" | "UAE" -> selects api.tabby.sa vs api.tabby.ai
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("tabby_integrations")
+}
+
+// No FK to Order, same reasoning as TamaraCheckoutLog.
+model TabbyCheckoutLog {
+  id               String   @id
+  orderReferenceId String
+  sessionId        String?
+  paymentId        String?
+  status           String // CREATED | FAILED
+  errorMessage     String?
+  createdAt        DateTime @default(now())
+
+  @@index([orderReferenceId])
+  @@map("tabby_checkout_logs")
+}

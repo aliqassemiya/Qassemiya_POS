@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import { IpcChannels, type AppLanguage, type CheckoutRequest, type CreateCustomerRequest, type CreateReturnRequest, type PairDeviceRequest, type PinLoginRequest, type SyncStatusPayload, type TamaraCreateSessionRequest } from "../shared/ipc";
+import { IpcChannels, type AppLanguage, type CheckoutRequest, type CreateCustomerRequest, type CreateReturnRequest, type PairDeviceRequest, type PinLoginRequest, type SyncStatusPayload, type TamaraCreateSessionRequest, type TabbyCreateSessionRequest } from "../shared/ipc";
 
 /**
  * Narrow, explicit bridge — the renderer only ever sees these named methods,
@@ -26,6 +26,9 @@ const api = {
   },
   tamara: {
     createCheckoutSession: (req: TamaraCreateSessionRequest) => ipcRenderer.invoke(IpcChannels.TAMARA_CREATE_SESSION, req),
+  },
+  tabby: {
+    createCheckoutSession: (req: TabbyCreateSessionRequest) => ipcRenderer.invoke(IpcChannels.TABBY_CREATE_SESSION, req),
   },
   sales: {
     checkout: (req: CheckoutRequest) => ipcRenderer.invoke(IpcChannels.CHECKOUT, req),

@@ -32,6 +32,7 @@ import { ShopifyModule } from "./modules/shopify/shopify.module";
 import { InvoicesModule } from "./modules/invoices/invoices.module";
 import { WhatsappModule } from "./modules/whatsapp/whatsapp.module";
 import { TamaraModule } from "./modules/tamara/tamara.module";
+import { TabbyModule } from "./modules/tabby/tabby.module";
 
 @Module({
   imports: [
@@ -64,6 +65,7 @@ import { TamaraModule } from "./modules/tamara/tamara.module";
     InvoicesModule,
     WhatsappModule,
     TamaraModule,
+    TabbyModule,
   ],
   providers: [
     { provide: APP_PIPE, useClass: ZodValidationPipe },

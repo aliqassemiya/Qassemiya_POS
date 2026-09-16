@@ -38,6 +38,7 @@ import { ShopifySettingsPage } from "@/pages/integrations/ShopifySettingsPage";
 import { OnlineOrdersPage } from "@/pages/integrations/OnlineOrdersPage";
 import { WhatsAppSettingsPage } from "@/pages/integrations/WhatsAppSettingsPage";
 import { TamaraSettingsPage } from "@/pages/integrations/TamaraSettingsPage";
+import { TabbySettingsPage } from "@/pages/integrations/TabbySettingsPage";
 import { ChannelComparisonPage } from "@/pages/reports/ChannelComparisonPage";
 
 export default function App() {
@@ -119,6 +120,7 @@ export default function App() {
           <Route path="/integrations/shopify/orders" element={<OnlineOrdersPage />} />
           <Route path="/integrations/whatsapp" element={<WhatsAppSettingsPage />} />
           <Route path="/integrations/tamara" element={<TamaraSettingsPage />} />
+          <Route path="/integrations/tabby" element={<TabbySettingsPage />} />
           <Route path="/reports/channel-comparison" element={<ChannelComparisonPage />} />
         </Route>
       </Route>
