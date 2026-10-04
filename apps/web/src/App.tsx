@@ -18,7 +18,9 @@ import { SalesPage } from "@/pages/sales/SalesPage";
 import { SaleDetailPage } from "@/pages/sales/SaleDetailPage";
 import { ReturnsPage } from "@/pages/returns/ReturnsPage";
 import { CustomersPage } from "@/pages/customers/CustomersPage";
+import { CustomerDetailPage } from "@/pages/customers/CustomerDetailPage";
 import { EmployeesPage } from "@/pages/employees/EmployeesPage";
+import { UsersPage } from "@/pages/users/UsersPage";
 import { ReportsPage } from "@/pages/reports/ReportsPage";
 import { VendorsPage } from "@/pages/vendors/VendorsPage";
 import { VendorStatementPage } from "@/pages/vendors/VendorStatementPage";
@@ -100,7 +102,9 @@ export default function App() {
           <Route path="/sales/:id" element={<SaleDetailPage />} />
           <Route path="/returns" element={<ReturnsPage />} />
           <Route path="/customers" element={<CustomersPage />} />
+          <Route path="/customers/:id" element={<CustomerDetailPage />} />
           <Route path="/employees" element={<EmployeesPage />} />
+          <Route path="/users" element={<UsersPage />} />
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/vendors" element={<VendorsPage />} />
           <Route path="/vendors/:id" element={<VendorStatementPage />} />

@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -129,7 +130,7 @@ export function CustomersPage() {
                 <th className="px-4 py-2 font-medium">{t("common.name")}</th>
                 <th className="px-4 py-2 font-medium">{t("common.phone")}</th>
                 <th className="px-4 py-2 font-medium">{t("common.email")}</th>
-                {canManage && <th className="px-4 py-2" />}
+                <th className="px-4 py-2" />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -138,13 +139,19 @@ export function CustomersPage() {
                   <td className="px-4 py-2 font-medium text-slate-900">{c.fullName}</td>
                   <td className="px-4 py-2 text-slate-600">{c.phone ?? "—"}</td>
                   <td className="px-4 py-2 text-slate-600">{c.email ?? "—"}</td>
-                  {canManage && (
-                    <td className="px-4 py-2 text-right">
+                  <td className="flex justify-end gap-2 px-4 py-2 text-right">
+                    <Link
+                      to={`/customers/${c.id}`}
+                      className="inline-flex items-center justify-center gap-2 rounded-md bg-transparent px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100"
+                    >
+                      {t("common.view")}
+                    </Link>
+                    {canManage && (
                       <Button variant="ghost" onClick={() => setModalState({ open: true, customer: c })}>
                         {t("common.edit")}
                       </Button>
-                    </td>
-                  )}
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

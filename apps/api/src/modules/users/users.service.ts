@@ -23,6 +23,14 @@ export class UsersService {
     return this.prisma.user.findMany({ select: SAFE_SELECT, orderBy: { createdAt: "asc" } });
   }
 
+  /** Backs the role picker on the Users management page's role-assignment form. */
+  listRoles() {
+    return this.prisma.role.findMany({
+      select: { id: true, name: true, description: true },
+      orderBy: { name: "asc" },
+    });
+  }
+
   getMe(userId: string) {
     return buildAuthUser(this.prisma, userId);
   }

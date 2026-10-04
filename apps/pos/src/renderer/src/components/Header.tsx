@@ -31,7 +31,9 @@ export function Header({ onLogout }: { onLogout: () => void }) {
       <div className="left">
         <strong>Qassemiya POS</strong>
         <span style={{ opacity: 0.7, fontSize: 13 }}>
-          {pairing?.branchId ? t("header.branchLabel", { id: pairing.branchId.slice(0, 8) }) : ""}
+          {pairing?.branchCode
+            ? t("header.branchLabel", { code: pairing.branchCode, name: pairing.branchName ?? "" })
+            : ""}
         </span>
         {navItem("till", t("header.navTill"))}
         {navItem("returns", t("header.navReturns"))}

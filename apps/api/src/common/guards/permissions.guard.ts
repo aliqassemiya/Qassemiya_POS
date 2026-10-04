@@ -4,6 +4,14 @@ import type { Permission } from "@qassemiya/shared-types";
 import { PERMISSIONS_KEY } from "../decorators/require-permissions.decorator";
 import type { AuthenticatedUser } from "../types/auth-request";
 
+// Permissions that, once granted at ANY branch, apply across every branch --
+// e.g. a branch manager checking whether another branch has stock on hand,
+// so they can redirect a customer there. Deliberately a short, explicit
+// allowlist of read-only checks; everything else (including inventory.adjust,
+// granted via that very same role) stays strictly scoped to the grant's own
+// branchId below.
+const BRANCH_AGNOSTIC_PERMISSIONS: ReadonlySet<string> = new Set(["inventory.view.allBranches"]);
+
 /**
  * Resolves UserRole -> RolePermission grants (flattened onto the JWT at
  * login) scoped to the request's branch. A grant with branchId=null is
@@ -29,14 +37,16 @@ export class PermissionsGuard implements CanActivate {
     const branchId: string | undefined =
       request.params?.branchId ?? request.query?.branchId ?? request.body?.branchId ?? user.deviceBranchId;
 
-    const hasPermission = user.grants.some((grant) => {
-      const branchMatches = grant.branchId === null || (branchId !== undefined && grant.branchId === branchId);
-      if (!branchMatches) return false;
-      return required.some((perm) => grant.permissions.includes(perm));
-    });
+    const hasPermission = user.grants.some((grant) =>
+      required.some((perm) => {
+        if (!grant.permissions.includes(perm)) return false;
+        if (BRANCH_AGNOSTIC_PERMISSIONS.has(perm)) return true;
+        return grant.branchId === null || (branchId !== undefined && grant.branchId === branchId);
+      }),
+    );
 
     if (!hasPermission) {
-      throw new ForbiddenException(`Missing required permission: ${required.join(" or ")}`);
+      throw new ForbiddenException(`Missing required permission: ${required.join(" or ")} (Contact Admin)`);
     }
     return true;
   }

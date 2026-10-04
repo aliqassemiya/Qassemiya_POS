@@ -6,6 +6,7 @@ export const LocalMetaKey = {
   DEVICE_UUID: "deviceUuid",
   DEVICE_NAME: "deviceName",
   BRANCH_ID: "branchId",
+  BRANCH_CODE: "branchCode",
   BRANCH_NAME: "branchName",
   ACCESS_TOKEN: "accessToken",
   REFRESH_TOKEN: "refreshToken",

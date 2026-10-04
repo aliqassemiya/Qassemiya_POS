@@ -2,6 +2,7 @@ import { apiClient } from "@/lib/apiClient";
 import type { Branch } from "@/types/entities";
 
 export interface BranchInput {
+  code: string;
   name: string;
   nameAr?: string;
   address?: string;

@@ -53,6 +53,8 @@ export interface CreateCustomerRequest {
 export interface PairDeviceRequest {
   apiUrl: string;
   branchId: string;
+  branchCode: string;
+  branchName: string;
   deviceName: string;
 }
 

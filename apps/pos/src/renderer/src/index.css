@@ -1,3 +1,8 @@
+@import "@fontsource/cairo/400.css";
+@import "@fontsource/cairo/500.css";
+@import "@fontsource/cairo/600.css";
+@import "@fontsource/cairo/700.css";
+
 :root {
   color-scheme: light;
   --bg: #f4f5f7;
@@ -10,7 +15,7 @@
   --danger: #dc2626;
   --success: #16a34a;
   --warn: #d97706;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: "Cairo", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
 * {
@@ -219,6 +224,7 @@ select {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  overflow-y: auto;
 }
 
 .scan-input {
@@ -244,6 +250,7 @@ select {
 .customer-results {
   display: flex;
   flex-direction: column;
+  flex-shrink: 0;
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: auto;

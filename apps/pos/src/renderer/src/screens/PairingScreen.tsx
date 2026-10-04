@@ -44,9 +44,20 @@ export function PairingScreen() {
       setError(t("pairing.errorMissingFields"));
       return;
     }
+    const selectedBranch = branches?.find((b) => b.id === branchId);
+    if (!selectedBranch) {
+      setError(t("pairing.errorMissingFields"));
+      return;
+    }
     setLoading(true);
     try {
-      await window.api.auth.pairDevice({ apiUrl: apiUrl.trim(), branchId, deviceName: deviceName.trim() });
+      await window.api.auth.pairDevice({
+        apiUrl: apiUrl.trim(),
+        branchId,
+        branchCode: selectedBranch.code,
+        branchName: selectedBranch.name,
+        deviceName: deviceName.trim(),
+      });
       const state = await window.api.auth.getPairingState();
       setPairing(state);
       push("success", t("pairing.toastDevicePaired"));

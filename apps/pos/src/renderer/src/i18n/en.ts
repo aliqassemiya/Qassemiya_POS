@@ -7,7 +7,7 @@ export const en = {
     loading: "Loading…",
   },
   header: {
-    branchLabel: "Branch: {{id}}",
+    branchLabel: "Branch: {{code}} — {{name}}",
     navTill: "Till",
     navReturns: "Returns",
     navSettings: "Settings",
@@ -138,7 +138,7 @@ export const en = {
     title: "Settings",
     device: "Device",
     apiUrlLine: "API URL: {{value}}",
-    branchIdLine: "Branch ID: {{value}}",
+    branchLine: "Branch: {{code}} — {{name}}",
     deviceLine: "Device: {{name}} ({{uuid}})",
     receiptPrinter: "Receipt printer",
     printerDescription:

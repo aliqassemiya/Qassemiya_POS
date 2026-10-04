@@ -5,7 +5,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { productSchema, type ProductInput } from "@qassemiya/shared-types";
-import { listCategories } from "@/api/categories";
 import { listVendors } from "@/api/vendors";
 import { addVariant, createProduct, getProduct, updateProduct, updateVariant } from "@/api/products";
 import { DataState } from "@/components/ui/DataState";
@@ -37,7 +36,6 @@ export function ProductFormPage() {
   const queryClient = useQueryClient();
   const canManage = useHasPermission("catalog.manage");
 
-  const categoriesQuery = useQuery({ queryKey: ["categories"], queryFn: listCategories });
   const vendorsQuery = useQuery({ queryKey: ["vendors"], queryFn: () => listVendors() });
   const productQuery = useQuery({
     queryKey: ["products", id],
@@ -60,7 +58,6 @@ export function ProductFormPage() {
           name: productQuery.data.name,
           nameAr: productQuery.data.nameAr ?? undefined,
           description: productQuery.data.description ?? undefined,
-          categoryId: productQuery.data.categoryId ?? undefined,
           brand: productQuery.data.brand ?? undefined,
           imageUrl: productQuery.data.imageUrl ?? undefined,
           variants: productQuery.data.variants.map((v) => ({
@@ -244,14 +241,6 @@ export function ProductFormPage() {
           <TextField label={t("common.name")} error={errors.name} {...register("name")} />
           <TextField label={t("products.form.nameArabicLabel")} error={errors.nameAr} {...register("nameAr")} />
           <TextField label={t("products.form.brandLabel")} error={errors.brand} {...register("brand")} />
-          <SelectField label={t("products.form.categoryLabel")} error={errors.categoryId} {...register("categoryId")}>
-            <option value="">{t("products.form.noneOption")}</option>
-            {categoriesQuery.data?.map((cat) => (
-              <option key={cat.id} value={cat.id}>
-                {cat.name}
-              </option>
-            ))}
-          </SelectField>
           {/* Vendor is a product-level tag, not per-variant — a whole style is
               sourced from one supplier even with many size/color variants,
               per Part A of the plan. Controlled outside react-hook-form; see

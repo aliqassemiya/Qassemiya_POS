@@ -9,7 +9,7 @@ export const ar = {
     loading: "جارٍ التحميل…",
   },
   header: {
-    branchLabel: "الفرع: {{id}}",
+    branchLabel: "الفرع: {{code}} — {{name}}",
     navTill: "نقطة البيع",
     navReturns: "المرتجعات",
     navSettings: "الإعدادات",
@@ -140,7 +140,7 @@ export const ar = {
     title: "الإعدادات",
     device: "الجهاز",
     apiUrlLine: "رابط واجهة برمجة التطبيقات: {{value}}",
-    branchIdLine: "معرّف الفرع: {{value}}",
+    branchLine: "الفرع: {{code}} — {{name}}",
     deviceLine: "الجهاز: {{name}} ({{uuid}})",
     receiptPrinter: "طابعة الإيصالات",
     printerDescription:

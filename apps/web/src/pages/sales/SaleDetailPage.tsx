@@ -38,13 +38,20 @@ export function SaleDetailPage() {
   const [reason, setReason] = useState("");
 
   const saleQuery = useQuery({ queryKey: ["sales", id], queryFn: () => getSale(id as string) });
+  // The URL param may be the human-readable orderNumber rather than the raw
+  // UUID (getSale resolves either) -- once the sale loads, every follow-up
+  // call needs the real UUID, since sibling endpoints (whatsapp logs, void,
+  // payment confirm, invoice PDF) don't do that same orderNumber lookup.
+  const resolvedOrderId = saleQuery.data?.id;
+
   const whatsappLogsQuery = useQuery({
-    queryKey: ["whatsapp", "message-logs", id],
-    queryFn: () => listWhatsAppMessageLogs(id as string),
+    queryKey: ["whatsapp", "message-logs", resolvedOrderId],
+    queryFn: () => listWhatsAppMessageLogs(resolvedOrderId as string),
+    enabled: Boolean(resolvedOrderId),
   });
 
   const voidMutation = useMutation({
-    mutationFn: () => voidSale(id as string, reason || undefined),
+    mutationFn: () => voidSale(resolvedOrderId as string, reason || undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sales"] });
       queryClient.invalidateQueries({ queryKey: ["sales", id] });
@@ -54,16 +61,16 @@ export function SaleDetailPage() {
   });
 
   const resendMutation = useMutation({
-    mutationFn: () => resendWhatsAppInvoice(id as string),
+    mutationFn: () => resendWhatsAppInvoice(resolvedOrderId as string),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["whatsapp", "message-logs", id] });
+      queryClient.invalidateQueries({ queryKey: ["whatsapp", "message-logs", resolvedOrderId] });
       toast.success(t("sales.detail.whatsappResent"));
     },
     onError: (err) => toast.error(getErrorMessage(err, t("sales.detail.whatsappResendFailed"))),
   });
 
   const confirmPaymentMutation = useMutation({
-    mutationFn: (paymentId: string) => confirmPayment(id as string, paymentId),
+    mutationFn: (paymentId: string) => confirmPayment(resolvedOrderId as string, paymentId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sales", id] });
       toast.success(t("sales.detail.paymentConfirmed"));
@@ -72,7 +79,7 @@ export function SaleDetailPage() {
   });
 
   const latestWhatsAppLog = whatsappLogsQuery.data?.[0];
-  const invoiceUrl = id ? `${import.meta.env.VITE_API_URL}/invoices/${id}` : "";
+  const invoiceUrl = resolvedOrderId ? `${import.meta.env.VITE_API_URL}/invoices/${resolvedOrderId}` : "";
 
   return (
     <DataState isLoading={saleQuery.isLoading} isError={saleQuery.isError} error={saleQuery.error}>

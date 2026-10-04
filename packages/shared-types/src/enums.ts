@@ -112,6 +112,7 @@ export const PERMISSIONS = [
   "customers.manage",
   "catalog.manage",
   "inventory.view",
+  "inventory.view.allBranches",
   "inventory.adjust",
   "pos.sale.create",
   "pos.sale.void",

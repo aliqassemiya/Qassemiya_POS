@@ -7,6 +7,8 @@ export interface PairingState {
   paired: boolean;
   apiUrl: string | null;
   branchId: string | null;
+  branchCode: string | null;
+  branchName: string | null;
   deviceUuid: string | null;
   deviceName: string | null;
 }

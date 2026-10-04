@@ -54,7 +54,7 @@ export function SettingsScreen() {
       <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
         {t("settings.apiUrlLine", { value: pairing?.apiUrl ?? "—" })}
         <br />
-        {t("settings.branchIdLine", { value: pairing?.branchId ?? "—" })}
+        {t("settings.branchLine", { code: pairing?.branchCode ?? "—", name: pairing?.branchName ?? "—" })}
         <br />
         {t("settings.deviceLine", { name: pairing?.deviceName ?? "—", uuid: pairing?.deviceUuid?.slice(0, 8) ?? "—" })}
       </p>

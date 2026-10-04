@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { VariantBulkUpdateRow } from "@qassemiya/shared-types";
-import { listCategories } from "@/api/categories";
 import { bulkUpdateVariants, listProducts, type BulkUpdateResult } from "@/api/products";
 import type { Product } from "@/types/entities";
 import { DataState } from "@/components/ui/DataState";
@@ -28,7 +27,6 @@ function productToExportRows(product: Product) {
     variantId: v.id,
     sku: v.sku,
     productName: product.name,
-    category: product.category?.name ?? "",
     brand: product.brand ?? "",
     size: v.size ?? "",
     color: v.color ?? "",
@@ -44,17 +42,14 @@ export function ProductsPage() {
   const canManage = useHasPermission("catalog.manage");
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
-  const [categoryId, setCategoryId] = useState("");
   const [page, setPage] = useState(1);
   const [importResult, setImportResult] = useState<BulkUpdateResult | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const categoriesQuery = useQuery({ queryKey: ["categories"], queryFn: listCategories });
   const productsQuery = useQuery({
-    queryKey: ["products", search, categoryId, page],
-    queryFn: () =>
-      listProducts({ search: search || undefined, categoryId: categoryId || undefined, page, pageSize: PAGE_SIZE }),
+    queryKey: ["products", search, page],
+    queryFn: () => listProducts({ search: search || undefined, page, pageSize: PAGE_SIZE }),
   });
 
   const products = productsQuery.data?.data ?? [];
@@ -98,7 +93,6 @@ export function ProductsPage() {
     for (;;) {
       const result = await listProducts({
         search: search || undefined,
-        categoryId: categoryId || undefined,
         page: fetchPage,
         pageSize: fetchPageSize,
       });
@@ -114,7 +108,6 @@ export function ProductsPage() {
     variantId: t("products.form.variantIdColumn"),
     sku: t("products.form.skuLabel"),
     productName: t("common.name"),
-    category: t("products.form.categoryLabel"),
     brand: t("products.form.brandLabel"),
     size: t("products.form.sizeLabel"),
     color: t("products.form.colorLabel"),
@@ -239,18 +232,6 @@ export function ProductsPage() {
           placeholder={t("products.searchPlaceholder")}
           className="w-64 rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
         />
-        <select
-          value={categoryId}
-          onChange={(e) => resetToFirstPage(setCategoryId)(e.target.value)}
-          className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
-        >
-          <option value="">{t("products.allCategories")}</option>
-          {categoriesQuery.data?.map((cat) => (
-            <option key={cat.id} value={cat.id}>
-              {cat.name}
-            </option>
-          ))}
-        </select>
       </div>
 
       <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
@@ -276,7 +257,6 @@ export function ProductsPage() {
                 <th className="px-4 py-2 font-medium">{t("products.skuColumn")}</th>
                 <th className="px-4 py-2 font-medium">{t("products.nameColumn")}</th>
                 <th className="px-4 py-2 font-medium">{t("products.brandColumn")}</th>
-                <th className="px-4 py-2 font-medium">{t("products.categoryColumn")}</th>
                 <th className="px-4 py-2 font-medium">{t("products.variantsColumn")}</th>
                 <th className="px-4 py-2" />
               </tr>
@@ -307,7 +287,6 @@ export function ProductsPage() {
                   <td className="px-4 py-2 font-mono text-xs text-slate-600">{product.variants[0]?.sku ?? "—"}</td>
                   <td className="px-4 py-2 font-medium text-slate-900">{product.name}</td>
                   <td className="px-4 py-2 text-slate-600">{product.brand ?? "—"}</td>
-                  <td className="px-4 py-2 text-slate-600">{product.category?.name ?? "—"}</td>
                   <td className="px-4 py-2 text-slate-600">{product.variants.length}</td>
                   <td className="px-4 py-2 text-right">
                     <Link to={`/products/${product.id}`} className="text-sm font-medium text-slate-900 underline">

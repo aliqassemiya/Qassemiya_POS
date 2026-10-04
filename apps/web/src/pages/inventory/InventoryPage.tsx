@@ -293,6 +293,7 @@ export function InventoryPage() {
 
   const branchesQuery = useQuery({ queryKey: ["branches"], queryFn: listBranches });
   const [branchId, setBranchId] = useState(activeBranchId ?? "");
+  const [search, setSearch] = useState("");
   const [modalState, setModalState] = useState<{ open: boolean; row?: Inventory }>({ open: false });
   const [transferOpen, setTransferOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -301,8 +302,8 @@ export function InventoryPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const inventoryQuery = useQuery({
-    queryKey: ["inventory", branchId, page],
-    queryFn: () => listInventory({ branchId: branchId || undefined, page, pageSize: PAGE_SIZE }),
+    queryKey: ["inventory", branchId, search, page],
+    queryFn: () => listInventory({ branchId: branchId || undefined, search: search || undefined, page, pageSize: PAGE_SIZE }),
   });
   const inventoryRows = inventoryQuery.data?.data ?? [];
   const totalCount = inventoryQuery.data?.totalCount ?? 0;
@@ -382,14 +383,19 @@ export function InventoryPage() {
 
   const selectedExportRows = inventoryRows.filter((r) => selectedIds.has(r.id)).map(toExportRow);
 
-  // "Export all" means every row matching the current branch filter, not
+  // "Export all" means every row matching the current filters, not
   // just the current page — fetched on demand at export time.
   async function fetchAllMatchingInventoryRows() {
     const fetchPageSize = 200;
     let fetchPage = 1;
     let all: Inventory[] = [];
     for (;;) {
-      const result = await listInventory({ branchId: branchId || undefined, page: fetchPage, pageSize: fetchPageSize });
+      const result = await listInventory({
+        branchId: branchId || undefined,
+        search: search || undefined,
+        page: fetchPage,
+        pageSize: fetchPageSize,
+      });
       all = all.concat(result.data);
       if (all.length >= result.totalCount || result.data.length === 0) break;
       fetchPage += 1;
@@ -496,6 +502,15 @@ export function InventoryPage() {
       )}
 
       <div className="flex flex-wrap items-center gap-3">
+        <input
+          value={search}
+          onChange={(e) => {
+            setPage(1);
+            setSearch(e.target.value);
+          }}
+          placeholder={t("inventory.searchPlaceholder")}
+          className="w-64 rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-400"
+        />
         <select
           value={branchId}
           onChange={(e) => {

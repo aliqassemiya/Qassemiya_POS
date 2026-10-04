@@ -7,7 +7,10 @@ import type { CreateReturnInput } from "@qassemiya/shared-types";
 import type { CreateReturnDto, ReturnsListQueryDto } from "./returns.dto";
 import type { Prisma } from "../../../generated/prisma";
 
-const WITH_DETAILS = { items: { include: { orderItem: true } } } as const;
+const WITH_DETAILS = {
+  items: { include: { orderItem: true } },
+  order: { select: { orderNumber: true } },
+} as const;
 
 @Injectable()
 export class ReturnsService {

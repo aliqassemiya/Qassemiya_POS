@@ -33,6 +33,7 @@ export class SalesService {
       ...(query.branchId ? { branchId: query.branchId } : {}),
       ...(query.cashierUserId ? { cashierUserId: query.cashierUserId } : {}),
       ...(query.soldByEmployeeId ? { soldByEmployeeId: query.soldByEmployeeId } : {}),
+      ...(query.customerId ? { customerId: query.customerId } : {}),
       ...(query.paymentMethodId ? { payments: { some: { paymentMethodId: query.paymentMethodId } } } : {}),
       ...(query.from || query.to
         ? { createdAt: { ...(query.from ? { gte: startOfDayRiyadh(query.from) } : {}), ...(query.to ? { lte: endOfDayRiyadh(query.to) } : {}) } }
@@ -68,6 +69,13 @@ export class SalesService {
   async findOne(id: string) {
     const order = await this.prisma.order.findUnique({ where: { id }, include: WITH_DETAILS });
     if (order) return this.attachAlreadyReturned(order);
+
+    // The sale-detail URL also accepts the human-readable sequential
+    // orderNumber (e.g. "20600000001") instead of the raw UUID -- try an
+    // exact match on that before falling back to the legacy short-UUID
+    // prefix lookup below.
+    const byOrderNumber = await this.prisma.order.findUnique({ where: { orderNumber: id }, include: WITH_DETAILS });
+    if (byOrderNumber) return this.attachAlreadyReturned(byOrderNumber);
 
     // Full order ids are 36-char UUIDs; the printed receipt only shows the
     // first 8 characters (see printer-bridge.ts's `Order: ${id.slice(0,8)}`)

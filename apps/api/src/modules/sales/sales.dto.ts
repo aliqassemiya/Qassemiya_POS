@@ -8,6 +8,7 @@ export const salesListQuerySchema = z.object({
   branchId: z.string().uuid().optional(),
   cashierUserId: z.string().uuid().optional(),
   soldByEmployeeId: z.string().uuid().optional(),
+  customerId: z.string().uuid().optional(),
   paymentMethodId: z.string().uuid().optional(),
   // Plain "YYYY-MM-DD" -- what every <input type="date"> in the web app
   // actually sends; not a full ISO datetime string.

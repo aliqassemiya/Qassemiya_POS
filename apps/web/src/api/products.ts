@@ -5,7 +5,6 @@ import type { PaginatedResult } from "./pagination";
 
 export interface ProductsQuery {
   search?: string;
-  categoryId?: string;
   page?: number;
   pageSize?: number;
 }

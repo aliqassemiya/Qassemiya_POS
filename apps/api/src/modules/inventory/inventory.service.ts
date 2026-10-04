@@ -16,7 +16,18 @@ export class InventoryService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll(query: InventoryListQueryDto) {
-    const where = { ...(query.branchId ? { branchId: query.branchId } : {}) };
+    const where = {
+      ...(query.branchId ? { branchId: query.branchId } : {}),
+      ...(query.search
+        ? {
+            OR: [
+              { productVariant: { sku: { contains: query.search, mode: "insensitive" as const } } },
+              { productVariant: { barcode: { contains: query.search, mode: "insensitive" as const } } },
+              { productVariant: { product: { name: { contains: query.search, mode: "insensitive" as const } } } },
+            ],
+          }
+        : {}),
+    };
     const [data, totalCount] = await Promise.all([
       this.prisma.inventory.findMany({
         where,

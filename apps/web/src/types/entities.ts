@@ -46,6 +46,7 @@ export interface LoginResponse {
 
 export interface Branch {
   id: string;
+  code: string;
   name: string;
   nameAr?: string | null;
   address?: string | null;
@@ -53,14 +54,6 @@ export interface Branch {
   vatNumber?: string | null;
   isActive: boolean;
   isWarehouse: boolean;
-  createdAt: string;
-}
-
-export interface Category {
-  id: string;
-  name: string;
-  nameAr?: string | null;
-  parentId?: string | null;
   createdAt: string;
 }
 
@@ -85,8 +78,6 @@ export interface Product {
   name: string;
   nameAr?: string | null;
   description?: string | null;
-  categoryId?: string | null;
-  category?: Category | null;
   brand?: string | null;
   // One image per product/style, not per-variant — these are dresses.
   imageUrl?: string | null;
@@ -186,6 +177,7 @@ export interface Return {
   totalRefundAmount: number;
   items: ReturnItemRecord[];
   createdAt: string;
+  order?: { orderNumber: string | null } | null;
 }
 
 export interface ReturnItemRecord {
@@ -217,6 +209,31 @@ export interface Employee {
   roles: RoleName[];
   isActive: boolean;
   createdAt: string;
+}
+
+export interface Role {
+  id: string;
+  name: RoleName;
+  description?: string | null;
+}
+
+export interface UserRoleGrant {
+  id: string;
+  roleId: string;
+  branchId: string | null;
+  role: Role;
+  branch: Branch | null;
+}
+
+/** A dashboard-login account (email + password) -- distinct from Employee's POS PIN login. */
+export interface DashboardUser {
+  id: string;
+  email: string;
+  fullName: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  userRoles: UserRoleGrant[];
 }
 
 export interface SalesSummaryReport {

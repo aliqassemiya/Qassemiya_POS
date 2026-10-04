@@ -18,6 +18,7 @@ import { getErrorMessage } from "@/lib/errorMessage";
 // fields described in the plan (name/nameAr/address/phone/vatNumber/isActive/isWarehouse).
 function buildBranchSchema(t: (key: string) => string) {
   return z.object({
+    code: z.string().min(1, t("branches.codeRequired")),
     name: z.string().min(1, t("branches.nameRequired")),
     nameAr: z.string().optional(),
     address: z.string().optional(),
@@ -47,6 +48,7 @@ function BranchForm({
     resolver: zodResolver(branchSchema),
     defaultValues: initial
       ? {
+          code: initial.code,
           name: initial.name,
           nameAr: initial.nameAr ?? "",
           address: initial.address ?? "",
@@ -60,6 +62,7 @@ function BranchForm({
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+      <TextField label={t("branches.codeLabel")} error={errors.code} {...register("code")} />
       <TextField label={t("common.name")} error={errors.name} {...register("name")} />
       <TextField label={t("branches.nameArabicLabel")} error={errors.nameAr} {...register("nameAr")} />
       <TextField label={t("common.address")} error={errors.address} {...register("address")} />
@@ -126,6 +129,7 @@ export function BranchesPage() {
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 text-slate-500">
               <tr>
+                <th className="px-4 py-2 font-medium">{t("branches.codeLabel")}</th>
                 <th className="px-4 py-2 font-medium">{t("common.name")}</th>
                 <th className="px-4 py-2 font-medium">{t("common.address")}</th>
                 <th className="px-4 py-2 font-medium">{t("common.phone")}</th>
@@ -136,6 +140,7 @@ export function BranchesPage() {
             <tbody className="divide-y divide-slate-100">
               {branchesQuery.data?.map((branch) => (
                 <tr key={branch.id}>
+                  <td className="px-4 py-2 font-mono text-xs text-slate-600">{branch.code}</td>
                   <td className="px-4 py-2 font-medium text-slate-900">{branch.name}</td>
                   <td className="px-4 py-2 text-slate-600">{branch.address ?? "—"}</td>
                   <td className="px-4 py-2 text-slate-600">{branch.phone ?? "—"}</td>

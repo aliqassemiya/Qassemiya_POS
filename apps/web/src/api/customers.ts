@@ -20,6 +20,11 @@ export async function listCustomers(query: CustomersQuery = {}): Promise<Paginat
   return data;
 }
 
+export async function getCustomer(id: string): Promise<Customer> {
+  const { data } = await apiClient.get<Customer>(`/customers/${id}`);
+  return data;
+}
+
 export async function createCustomer(input: CustomerInput): Promise<Customer> {
   const { data } = await apiClient.post<Customer>("/customers", input);
   return data;

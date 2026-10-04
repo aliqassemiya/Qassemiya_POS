@@ -6,6 +6,7 @@ export interface SalesQuery {
   branchId?: string;
   paymentMethodId?: string;
   soldByEmployeeId?: string;
+  customerId?: string;
   from?: string;
   to?: string;
   /** Matches the order number shown in the UI (id's first 8 chars) OR any line item's SKU. */

@@ -19,11 +19,13 @@ export class InventoryController {
   constructor(private readonly inventoryService: InventoryService) {}
 
   @Get()
+  @RequirePermissions("inventory.view", "inventory.view.allBranches")
   findAll(@Query() query: InventoryListQueryDto) {
     return this.inventoryService.findAll(query);
   }
 
   @Get("movements")
+  @RequirePermissions("inventory.view", "inventory.view.allBranches")
   findMovements(@Query() query: MovementsQueryDto) {
     return this.inventoryService.findMovements(query);
   }

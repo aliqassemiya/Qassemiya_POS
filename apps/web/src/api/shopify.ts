@@ -102,6 +102,7 @@ export interface ShopifyOrderListQuery {
   unmatchedOnly?: boolean;
   /** Matches order number (e.g. "#1001" or "1001") OR any line item's SKU. */
   search?: string;
+  customerId?: string;
 }
 
 export async function getShopifyIntegration(): Promise<ShopifyIntegrationStatus | null> {

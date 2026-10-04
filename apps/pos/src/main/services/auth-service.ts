@@ -6,6 +6,8 @@ import { getMeta, setMeta, clearAuthMeta, LocalMetaKey } from "../db/local-meta"
 export interface PairDeviceInput {
   apiUrl: string;
   branchId: string;
+  branchCode: string;
+  branchName: string;
   deviceName: string;
 }
 
@@ -48,6 +50,8 @@ export async function pairDevice(input: PairDeviceInput): Promise<PairDeviceResu
   await setMeta(LocalMetaKey.DEVICE_UUID, deviceUuid);
   await setMeta(LocalMetaKey.DEVICE_NAME, input.deviceName);
   await setMeta(LocalMetaKey.BRANCH_ID, input.branchId);
+  await setMeta(LocalMetaKey.BRANCH_CODE, input.branchCode);
+  await setMeta(LocalMetaKey.BRANCH_NAME, input.branchName);
   await setMeta(LocalMetaKey.DEVICE_PAIRED, "true");
 
   return { deviceUuid };
@@ -71,6 +75,8 @@ export interface PairingState {
   paired: boolean;
   apiUrl: string | null;
   branchId: string | null;
+  branchCode: string | null;
+  branchName: string | null;
   deviceUuid: string | null;
   deviceName: string | null;
 }
@@ -83,7 +89,30 @@ export async function getPairingState(): Promise<PairingState> {
     getMeta(LocalMetaKey.DEVICE_UUID),
     getMeta(LocalMetaKey.DEVICE_NAME),
   ]);
-  return { paired: paired === "true", apiUrl, branchId, deviceUuid, deviceName };
+
+  let branchCode = await getMeta(LocalMetaKey.BRANCH_CODE);
+  let branchName = await getMeta(LocalMetaKey.BRANCH_NAME);
+
+  // Tills paired before branch code/name were cached locally have a
+  // branchId but nothing else -- backfill them once (via the same
+  // unauthenticated endpoint the pairing screen itself uses) so
+  // already-paired tills pick this up without needing to re-pair.
+  if (paired === "true" && branchId && (!branchCode || !branchName) && apiUrl) {
+    try {
+      const branches = await listPublicBranches(apiUrl);
+      const match = branches.find((b) => b.id === branchId);
+      if (match) {
+        branchCode = match.code;
+        branchName = match.name;
+        await setMeta(LocalMetaKey.BRANCH_CODE, branchCode);
+        await setMeta(LocalMetaKey.BRANCH_NAME, branchName);
+      }
+    } catch {
+      // Offline or server unreachable -- fall through with whatever's cached.
+    }
+  }
+
+  return { paired: paired === "true", apiUrl, branchId, branchCode, branchName, deviceUuid, deviceName };
 }
 
 export interface PinLoginInput {

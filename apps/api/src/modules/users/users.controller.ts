@@ -28,6 +28,13 @@ export class UsersController {
     return this.usersService.findAll();
   }
 
+  // Must stay above ":id" for the same reason as "me" -- otherwise Nest
+  // would treat "roles" as an :id param.
+  @Get("roles")
+  listRoles() {
+    return this.usersService.listRoles();
+  }
+
   @Get(":id")
   findOne(@Param("id") id: string) {
     return this.usersService.findOne(id);

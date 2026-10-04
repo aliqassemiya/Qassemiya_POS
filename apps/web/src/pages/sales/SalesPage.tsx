@@ -164,7 +164,7 @@ export function SalesPage() {
               {sales.map((order) => (
                 <tr key={order.id}>
                   <td className="px-4 py-2 font-mono text-xs text-slate-600">
-                    <Link to={`/sales/${order.id}`} className="hover:underline">
+                    <Link to={`/sales/${order.orderNumber ?? order.id}`} className="hover:underline">
                       #{order.orderNumber ?? order.id.slice(0, 8)}
                     </Link>
                   </td>
@@ -184,7 +184,7 @@ export function SalesPage() {
                     </span>
                   </td>
                   <td className="px-4 py-2 text-right">
-                    <Link to={`/sales/${order.id}`} className="text-sm font-medium text-slate-900 underline">
+                    <Link to={`/sales/${order.orderNumber ?? order.id}`} className="text-sm font-medium text-slate-900 underline">
                       {t("common.view")}
                     </Link>
                   </td>

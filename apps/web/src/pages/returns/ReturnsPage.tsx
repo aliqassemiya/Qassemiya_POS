@@ -230,7 +230,7 @@ export function ReturnsPage() {
               {returns.map((r) => (
                 <tr key={r.id}>
                   <td className="px-4 py-2 text-slate-600">{new Date(r.createdAt).toLocaleString()}</td>
-                  <td className="px-4 py-2 text-slate-600">{r.orderId.slice(0, 8)}</td>
+                  <td className="px-4 py-2 text-slate-600">{r.order?.orderNumber ?? r.orderId.slice(0, 8)}</td>
                   <td className="px-4 py-2 text-slate-600">{r.reason ?? "—"}</td>
                   <td className="px-4 py-2 font-medium text-slate-900">{currency(r.totalRefundAmount)}</td>
                   <td className="px-4 py-2 text-slate-600">{t(`returns.statuses.${r.status}`)}</td>

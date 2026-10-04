@@ -26,6 +26,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/returns", labelKey: "returns", anyOf: ["pos.return.create", "reports.view"] },
   { to: "/customers", labelKey: "customers", anyOf: ["customers.manage"] },
   { to: "/employees", labelKey: "employees", anyOf: ["employees.manage"] },
+  { to: "/users", labelKey: "users", anyOf: ["users.manage"] },
   { to: "/vendors", labelKey: "vendors", anyOf: ["vendors.manage"] },
   {
     to: "/purchase-orders",
@@ -90,7 +91,7 @@ export function Sidebar() {
   );
 
   return (
-    <nav className="flex w-56 shrink-0 flex-col gap-1 border-r border-slate-200 bg-white p-4">
+    <nav className="flex w-56 shrink-0 flex-col gap-1 overflow-y-auto border-r border-slate-200 bg-white p-4">
       <div className="mb-4 px-2 text-lg font-bold text-slate-900">{t("nav.brand")}</div>
       {visibleItems.map((item) => (
         <NavLink key={item.to} to={item.to} className={linkClasses}>

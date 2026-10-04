@@ -132,6 +132,7 @@ export class ShopifyService {
           }
         : {}),
       ...(query.unmatchedOnly ? { items: { some: { productVariantId: null } } } : {}),
+      ...(query.customerId ? { customerId: query.customerId } : {}),
       ...(search
         ? {
             OR: [

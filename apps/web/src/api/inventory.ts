@@ -6,6 +6,7 @@ import type { PaginatedResult } from "./pagination";
 export interface InventoryQuery {
   branchId?: string;
   variantId?: string;
+  search?: string;
   page?: number;
   pageSize?: number;
 }
