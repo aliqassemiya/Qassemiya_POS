@@ -1,0 +1,106 @@
+name: Deploy to live (Phase 1 dev)
+
+# Every push to main builds the API image + the web dashboard and deploys
+# both to the Phase 1 EC2 box (dev.shalkyqq.com / app.dev.shalkyqq.com).
+# Replaces the manual "build locally, docker login, push to ECR, SSH in and
+# restart the container" sequence that was being run by hand.
+on:
+  push:
+    branches: [main]
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: qassemiya-api
+  EC2_HOST: 34.192.224.91
+  EC2_USER: ec2-user
+
+jobs:
+  deploy-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr-login
+
+      - uses: docker/setup-buildx-action@v3
+
+      # GitHub-hosted runners are already linux/amd64 -- unlike building
+      # locally on an arm64 Mac, no QEMU cross-platform emulation is needed
+      # here, so this builds notably faster than the manual local process.
+      - uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          tags: ${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Redeploy container on EC2
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ env.EC2_HOST }}
+          username: ${{ env.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          script_stop: true
+          script: |
+            ECR_URI="${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}"
+            aws ecr get-login-password --region ${{ env.AWS_REGION }} | sudo docker login --username AWS --password-stdin "$ECR_URI"
+            sudo docker pull "${ECR_URI}:latest"
+            sudo docker stop qassemiya-api
+            sudo docker rm qassemiya-api
+            sudo docker run -d --name qassemiya-api --restart unless-stopped --env-file /root/api.env -p 127.0.0.1:3000:3000 "${ECR_URI}:latest"
+            sleep 8
+            sudo docker ps --filter name=qassemiya-api
+            curl -sf http://127.0.0.1:3000/health
+
+  deploy-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      # Scoped to @qassemiya/web + its deps only -- avoids installing
+      # apps/pos's native Electron dependencies (better-sqlite3,
+      # node-thermal-printer), which this job never needs.
+      - run: pnpm install --frozen-lockfile --filter @qassemiya/web...
+
+      - name: Build dashboard
+        working-directory: apps/web
+        run: VITE_API_URL=https://dev.shalkyqq.com npm run build
+
+      - name: Deploy to EC2
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ env.EC2_HOST }}
+          username: ${{ env.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          source: "apps/web/dist/*"
+          target: "/tmp/dashboard-deploy"
+          strip_components: 3
+
+      - name: Swap into place
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ env.EC2_HOST }}
+          username: ${{ env.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          script_stop: true
+          script: |
+            sudo rm -rf /var/www/dashboard/*
+            sudo cp -r /tmp/dashboard-deploy/* /var/www/dashboard/
+            rm -rf /tmp/dashboard-deploy
+            sudo chown -R nginx:nginx /var/www/dashboard

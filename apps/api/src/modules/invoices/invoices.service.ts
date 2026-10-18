@@ -1,6 +1,6 @@
-import { Injectable, NotFoundException, OnModuleDestroy } from "@nestjs/common";
-import puppeteer, { type Browser } from "puppeteer";
+import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../common/prisma/prisma.service";
+import { PdfRendererService } from "../../common/pdf/pdf-renderer.service";
 import { buildInvoiceHtml, type InvoiceOrder } from "./invoice-template";
 import { buildZatcaQrDataUrl } from "./zatca-qr";
 
@@ -19,26 +19,11 @@ const WITH_INVOICE_DETAILS = {
 } as const;
 
 @Injectable()
-export class InvoicesService implements OnModuleDestroy {
-  constructor(private readonly prisma: PrismaService) {}
-
-  // Launching a Chromium instance per PDF request is slow (~1-2s just to
-  // boot); a single shared headless browser is reused across requests and
-  // torn down on app shutdown.
-  private browserPromise: Promise<Browser> | null = null;
-
-  private getBrowser(): Promise<Browser> {
-    if (!this.browserPromise) {
-      this.browserPromise = puppeteer.launch({ headless: true, args: ["--no-sandbox", "--disable-setuid-sandbox"] });
-    }
-    return this.browserPromise;
-  }
-
-  async onModuleDestroy() {
-    if (this.browserPromise) {
-      await (await this.browserPromise).close();
-    }
-  }
+export class InvoicesService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly pdfRenderer: PdfRendererService,
+  ) {}
 
   private async getInvoiceOrder(orderId: string): Promise<InvoiceOrder> {
     const order = await this.prisma.order.findUnique({ where: { id: orderId }, include: WITH_INVOICE_DETAILS });
@@ -95,16 +80,7 @@ export class InvoicesService implements OnModuleDestroy {
   async renderInvoicePdf(orderId: string): Promise<{ buffer: Buffer; fileName: string }> {
     const invoiceOrder = await this.getInvoiceOrder(orderId);
     const html = buildInvoiceHtml(invoiceOrder);
-
-    const browser = await this.getBrowser();
-    const page = await browser.newPage();
-    try {
-      await page.setContent(html, { waitUntil: "load" });
-      await page.emulateMediaType("print"); // so the page's @media print rule (hides the Download PDF button) applies
-      const buffer = await page.pdf({ format: "a4", printBackground: true, margin: { top: "16px", bottom: "16px", left: "16px", right: "16px" } });
-      return { buffer: Buffer.from(buffer), fileName: `invoice-${invoiceOrder.orderNumber ?? invoiceOrder.id.slice(0, 8)}.pdf` };
-    } finally {
-      await page.close();
-    }
+    const buffer = await this.pdfRenderer.renderHtmlToPdf(html, { emulatePrint: true });
+    return { buffer, fileName: `invoice-${invoiceOrder.orderNumber ?? invoiceOrder.id.slice(0, 8)}.pdf` };
   }
 }

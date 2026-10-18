@@ -1,11 +1,12 @@
 import { ipcMain, type BrowserWindow } from "electron";
-import { IpcChannels, type AppLanguage, type CheckoutRequest, type CreateCustomerRequest, type CreateReturnRequest, type PairDeviceRequest, type PinLoginRequest, type TamaraCreateSessionRequest, type TabbyCreateSessionRequest } from "../../shared/ipc";
+import { IpcChannels, type AppLanguage, type CheckoutRequest, type CreateCustomerRequest, type CreateReturnRequest, type CreateShopifyReturnRequest, type PairDeviceRequest, type PinLoginRequest, type TamaraCreateSessionRequest, type TabbyCreateSessionRequest } from "../../shared/ipc";
 import { pairDevice, getPairingState, pinLogin, logout, getCurrentSession, listPublicBranches, unpairDevice } from "../services/auth-service";
 import { searchVariants, lookupByBarcode, listPaymentMethods, listEmployees, searchCustomers, createCustomer } from "../services/catalog-service";
 import { createSale, listRecentOrders, getOrderWithItems, createReturn, searchServerOrders } from "../services/sales-service";
+import { searchLocalShopifyOrders, getLocalShopifyOrderWithItems, createShopifyReturn } from "../services/shopify-returns-service";
 import { createTamaraCheckoutSession } from "../services/tamara-service";
 import { createTabbyCheckoutSession } from "../services/tabby-service";
-import { printReceipt, openCashDrawer, type ReceiptData } from "../printer/printer-bridge";
+import { printReceipt, printReturnSlip, openCashDrawer, type ReceiptData } from "../printer/printer-bridge";
 import { getMeta, setMeta, LocalMetaKey } from "../db/local-meta";
 import { syncWorker } from "../sync/sync-worker";
 
@@ -79,6 +80,32 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
   ipcMain.handle(IpcChannels.CREATE_RETURN, async (_e, req: CreateReturnRequest) => {
     const result = await createReturn(req);
     return result;
+  });
+
+  ipcMain.handle(IpcChannels.SEARCH_LOCAL_SHOPIFY_ORDERS, async (_e, query: string) => searchLocalShopifyOrders(query));
+
+  ipcMain.handle(IpcChannels.GET_SHOPIFY_ORDER, async (_e, id: string) => getLocalShopifyOrderWithItems(id));
+
+  ipcMain.handle(IpcChannels.CREATE_SHOPIFY_RETURN, async (_e, req: CreateShopifyReturnRequest) => {
+    const result = await createShopifyReturn(req);
+
+    const branchName = (await getMeta(LocalMetaKey.BRANCH_NAME)) ?? "Qassemiya";
+    const cashierName = (await getMeta(LocalMetaKey.CURRENT_EMPLOYEE_NAME)) ?? "Cashier";
+    // Print immediately, online or offline -- the customer needs the slip
+    // regardless of whether the till can reach the server yet, and a printer
+    // failure must never block or roll back the already-saved return record.
+    const printResult = await printReturnSlip({
+      branchName,
+      returnId: result.returnId,
+      shopifyOrderNumber: req.shopifyOrderNumber,
+      cashierName,
+      createdAt: result.createdAt,
+      customerName: req.customerName,
+      items: req.items.map((i) => ({ name: i.name, sku: i.sku, quantity: i.quantity })),
+      reason: req.reason,
+    }).catch((err) => ({ ok: false, error: String(err) }));
+
+    return { ...result, print: printResult };
   });
 
   ipcMain.handle(IpcChannels.PRINT_RECEIPT, (_e, receipt: ReceiptData) => printReceipt(receipt));

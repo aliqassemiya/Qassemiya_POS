@@ -75,6 +75,28 @@ export interface CatalogEmployeeRow {
   updatedAt: string;
 }
 
+export interface CatalogShopifyOrderRow {
+  id: string;
+  orderNumber: string;
+  shopifyCreatedAt: string;
+  currentTotalPrice: number;
+  currency: string;
+  customerName?: string | null;
+  customerPhone?: string | null;
+  updatedAt: string;
+}
+
+export interface CatalogShopifyOrderItemRow {
+  id: string;
+  shopifyOrderId: string;
+  sku?: string | null;
+  title: string;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+  productVariantId?: string | null;
+}
+
 export interface SyncCatalogResponse {
   serverTime: string;
   categories: CatalogCategoryRow[];
@@ -84,4 +106,6 @@ export interface SyncCatalogResponse {
   customers: CatalogCustomerRow[];
   paymentMethods: CatalogPaymentMethodRow[];
   employees: CatalogEmployeeRow[];
+  shopifyOrders: CatalogShopifyOrderRow[];
+  shopifyOrderItems: CatalogShopifyOrderItemRow[];
 }

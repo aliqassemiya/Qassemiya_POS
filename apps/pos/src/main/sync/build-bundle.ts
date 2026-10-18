@@ -74,3 +74,28 @@ export async function buildReturnBundle(returnId: string): Promise<SyncBundle | 
     },
   };
 }
+
+/** Builds the exact SyncBundle (kind: "SHOPIFY_RETURN") wire shape for one locally-created online-order return. */
+export async function buildShopifyReturnBundle(shopifyReturnId: string): Promise<SyncBundle | null> {
+  const db = getDb();
+  const ret = await db.selectFrom("shopifyReturn").selectAll().where("id", "=", shopifyReturnId).executeTakeFirst();
+  if (!ret) return null;
+
+  const items = await db.selectFrom("shopifyReturnItem").selectAll().where("shopifyReturnId", "=", shopifyReturnId).execute();
+
+  return {
+    kind: "SHOPIFY_RETURN",
+    clientCreatedAt: new Date(ret.createdAt).toISOString(),
+    payload: {
+      id: ret.id,
+      shopifyOrderId: ret.shopifyOrderId,
+      branchId: ret.branchId,
+      processedByUserId: ret.processedByUserId,
+      reason: ret.reason ?? undefined,
+      items: items.map((item) => ({
+        shopifyOrderItemId: item.shopifyOrderItemId,
+        quantity: item.quantity,
+      })),
+    },
+  };
+}

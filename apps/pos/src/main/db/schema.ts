@@ -162,6 +162,52 @@ export interface LocalMetaTable {
   value: string | null;
 }
 
+// Read-cache of online (Shopify) orders, pulled via GET /sync/catalog, not
+// branch-scoped -- any till can receive a return for any online order.
+export interface ShopifyOrderTable {
+  id: string;
+  orderNumber: string;
+  shopifyCreatedAt: string;
+  currentTotalPrice: number;
+  currency: string;
+  customerName: string | null;
+  customerPhone: string | null;
+  updatedAt: string;
+}
+
+export interface ShopifyOrderItemTable {
+  id: string;
+  shopifyOrderId: string;
+  sku: string | null;
+  title: string;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+  productVariantId: string | null;
+}
+
+// Write-origin: an online order return logged at this branch. No
+// refund-method/amount/restocked columns -- unlike ReturnTable, this never
+// touches inventory or the GL.
+export interface ShopifyReturnTable {
+  id: string;
+  shopifyOrderId: string;
+  branchId: string;
+  processedByUserId: string;
+  reason: string | null;
+  createdAt: string;
+  syncedAt: string | null;
+  syncAttempts: number;
+  lastSyncError: string | null;
+}
+
+export interface ShopifyReturnItemTable {
+  id: string;
+  shopifyReturnId: string;
+  shopifyOrderItemId: string;
+  quantity: number;
+}
+
 export interface Database {
   category: CategoryTable;
   product: ProductTable;
@@ -177,4 +223,8 @@ export interface Database {
   returnItem: ReturnItemTable;
   stockMovement: StockMovementTable;
   localMeta: LocalMetaTable;
+  shopifyOrder: ShopifyOrderTable;
+  shopifyOrderItem: ShopifyOrderItemTable;
+  shopifyReturn: ShopifyReturnTable;
+  shopifyReturnItem: ShopifyReturnItemTable;
 }

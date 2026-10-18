@@ -27,6 +27,10 @@ export const IpcChannels = {
   GET_ORDER: "sales:get-order",
   CREATE_RETURN: "sales:create-return",
 
+  SEARCH_LOCAL_SHOPIFY_ORDERS: "sales:search-local-shopify-orders",
+  GET_SHOPIFY_ORDER: "sales:get-shopify-order",
+  CREATE_SHOPIFY_RETURN: "sales:create-shopify-return",
+
   TAMARA_CREATE_SESSION: "tamara:create-session",
   TABBY_CREATE_SESSION: "tabby:create-session",
 
@@ -152,6 +156,18 @@ export interface CreateReturnRequest {
     restocked: boolean;
   }>;
   totalRefundAmount: number;
+}
+
+export interface CreateShopifyReturnRequest {
+  shopifyOrderId: string;
+  shopifyOrderNumber: string;
+  customerName?: string;
+  branchId: string;
+  processedByUserId: string;
+  reason?: string;
+  // name/sku carried alongside each line (same convention as CheckoutRequest's
+  // items) so the main process can print the return slip without a lookup.
+  items: Array<{ shopifyOrderItemId: string; name: string; sku: string; quantity: number }>;
 }
 
 export interface PrinterSettings {

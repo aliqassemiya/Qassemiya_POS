@@ -56,6 +56,7 @@ const FINANCE_NAV_ITEMS: NavItem[] = [
 // existing reports permissions like every other report page does.
 const ONLINE_SALES_NAV_ITEMS: NavItem[] = [
   { to: "/integrations/shopify/orders", labelKey: "onlineOrders", anyOf: ["reports.view"] },
+  { to: "/integrations/shopify/returns", labelKey: "onlineReturns", anyOf: ["reports.view"] },
   { to: "/reports/channel-comparison", labelKey: "channelComparison", anyOf: ["reports.channel.view"] },
 ];
 

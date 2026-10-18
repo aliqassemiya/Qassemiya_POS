@@ -1,0 +1,14 @@
+**/node_modules
+.git
+.turbo
+.claude
+.DS_Store
+**/dist
+**/out
+**/generated
+apps/web/dist
+apps/pos/out
+apps/pos/dist
+**/.env
+**/.env.*
+!**/.env.example

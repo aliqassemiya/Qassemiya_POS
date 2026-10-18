@@ -4,8 +4,10 @@ import { ScheduleModule } from "@nestjs/schedule";
 import { APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from "@nestjs/core";
 import { ZodValidationPipe } from "nestjs-zod";
 import { PrismaModule } from "./common/prisma/prisma.module";
+import { PdfRendererModule } from "./common/pdf/pdf-renderer.module";
 import { JwtAuthGuard } from "./common/guards/jwt-auth.guard";
 import { ResponseShapeInterceptor } from "./common/interceptors/response-shape.interceptor";
+import { HealthModule } from "./modules/health/health.module";
 import { AuthModule } from "./modules/auth/auth.module";
 import { UsersModule } from "./modules/users/users.module";
 import { BranchesModule } from "./modules/branches/branches.module";
@@ -17,6 +19,7 @@ import { InventoryModule } from "./modules/inventory/inventory.module";
 import { PaymentMethodsModule } from "./modules/payment-methods/payment-methods.module";
 import { SalesModule } from "./modules/sales/sales.module";
 import { ReturnsModule } from "./modules/returns/returns.module";
+import { ShopifyReturnsModule } from "./modules/shopify-returns/shopify-returns.module";
 import { SyncModule } from "./modules/sync/sync.module";
 import { ReportsModule } from "./modules/reports/reports.module";
 import { VendorsModule } from "./modules/vendors/vendors.module";
@@ -39,6 +42,8 @@ import { TabbyModule } from "./modules/tabby/tabby.module";
     ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
     PrismaModule,
+    PdfRendererModule,
+    HealthModule,
     AuthModule,
     UsersModule,
     BranchesModule,
@@ -50,6 +55,7 @@ import { TabbyModule } from "./modules/tabby/tabby.module";
     PaymentMethodsModule,
     SalesModule,
     ReturnsModule,
+    ShopifyReturnsModule,
     SyncModule,
     ReportsModule,
     VendorsModule,

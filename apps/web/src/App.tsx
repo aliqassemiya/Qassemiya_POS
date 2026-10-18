@@ -38,6 +38,7 @@ import { ExpensesPage } from "@/pages/expenses/ExpensesPage";
 import { FinancialReportsPage } from "@/pages/reports/FinancialReportsPage";
 import { ShopifySettingsPage } from "@/pages/integrations/ShopifySettingsPage";
 import { OnlineOrdersPage } from "@/pages/integrations/OnlineOrdersPage";
+import { OnlineReturnsPage } from "@/pages/integrations/OnlineReturnsPage";
 import { WhatsAppSettingsPage } from "@/pages/integrations/WhatsAppSettingsPage";
 import { TamaraSettingsPage } from "@/pages/integrations/TamaraSettingsPage";
 import { TabbySettingsPage } from "@/pages/integrations/TabbySettingsPage";
@@ -122,6 +123,7 @@ export default function App() {
           <Route path="/reports/financial" element={<FinancialReportsPage />} />
           <Route path="/integrations/shopify" element={<ShopifySettingsPage />} />
           <Route path="/integrations/shopify/orders" element={<OnlineOrdersPage />} />
+          <Route path="/integrations/shopify/returns" element={<OnlineReturnsPage />} />
           <Route path="/integrations/whatsapp" element={<WhatsAppSettingsPage />} />
           <Route path="/integrations/tamara" element={<TamaraSettingsPage />} />
           <Route path="/integrations/tabby" element={<TabbySettingsPage />} />

@@ -101,9 +101,10 @@ model User {
   userRoles     UserRole[]
   refreshTokens RefreshToken[]
 
-  cashierOrders         Order[]         @relation("OrderCashier")
-  processedReturns      Return[]        @relation("ReturnProcessedBy")
-  stockMovementsCreated StockMovement[] @relation("StockMovementCreatedBy")
+  cashierOrders           Order[]         @relation("OrderCashier")
+  processedReturns        Return[]        @relation("ReturnProcessedBy")
+  processedShopifyReturns ShopifyReturn[] @relation("ShopifyReturnProcessedBy")
+  stockMovementsCreated   StockMovement[] @relation("StockMovementCreatedBy")
 
   purchaseOrdersCreated    PurchaseOrder[]  @relation("PurchaseOrderCreatedBy")
   goodsReceiptsReceived    GoodsReceipt[]   @relation("GoodsReceiptReceivedBy")
@@ -232,17 +233,17 @@ model Device {
 // ---------- Org ----------
 
 model Branch {
-  id        String   @id
-  code      String   @unique
-  name      String
-  nameAr    String?
-  address   String?
-  phone     String?
-  vatNumber String? // ZATCA hook
-  isActive  Boolean  @default(true)
-  isWarehouse Boolean @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id
+  code        String   @unique
+  name        String
+  nameAr      String?
+  address     String?
+  phone       String?
+  vatNumber   String? // ZATCA hook
+  isActive    Boolean  @default(true)
+  isWarehouse Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   employees      Employee[]
   devices        Device[]
@@ -251,6 +252,7 @@ model Branch {
   stockMovements StockMovement[]
   orders         Order[]
   returns        Return[]
+  shopifyReturns ShopifyReturn[]
   orderSequence  BranchOrderSequence?
 
   purchaseOrders  PurchaseOrder[]
@@ -443,22 +445,22 @@ model PaymentMethod {
 // ---------- Sales ----------
 
 model Order {
-  id              String      @id
-  branchId        String
-  cashierUserId   String
+  id               String      @id
+  branchId         String
+  cashierUserId    String
   // Who gets credit for the sale — distinct from cashierUserId (who was
   // logged into the till). Lets a no-login sales-attribution Employee (see
   // Employee.pinCodeHash's comment) be picked from a dropdown at checkout so
   // a cashier can ring up a sale on the floor staff's behalf.
   soldByEmployeeId String?
-  customerId      String?
-  source          OrderSource @default(ADMIN)
-  status          OrderStatus @default(COMPLETED)
-  subtotal        Decimal     @db.Decimal(12, 2)
-  discountTotal   Decimal     @default(0) @db.Decimal(12, 2)
-  taxTotal        Decimal     @default(0) @db.Decimal(12, 2)
-  total           Decimal     @db.Decimal(12, 2)
-  notes           String?
+  customerId       String?
+  source           OrderSource @default(ADMIN)
+  status           OrderStatus @default(COMPLETED)
+  subtotal         Decimal     @db.Decimal(12, 2)
+  discountTotal    Decimal     @default(0) @db.Decimal(12, 2)
+  taxTotal         Decimal     @default(0) @db.Decimal(12, 2)
+  total            Decimal     @db.Decimal(12, 2)
+  notes            String?
   // Human-friendly sequential invoice number: branch.code + an 8-digit
   // zero-padded per-branch counter, no separator (e.g. "20100000020").
   // Assigned server-side in SalesService.createSaleTx (the single entrypoint
@@ -466,20 +468,20 @@ model Order {
   // can only be handed out once a sale actually commits centrally — an
   // offline till can't safely self-assign one. Null on orders created before
   // this feature shipped; those keep showing their id prefix instead.
-  orderNumber     String?     @unique
-  clientCreatedAt DateTime? // when the sale actually happened on an offline POS
-  syncedAt        DateTime? // set when accepted via /sync/push; null for online-created orders
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  orderNumber      String?     @unique
+  clientCreatedAt  DateTime? // when the sale actually happened on an offline POS
+  syncedAt         DateTime? // set when accepted via /sync/push; null for online-created orders
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
 
-  branch        Branch    @relation(fields: [branchId], references: [id])
-  cashierUser   User      @relation("OrderCashier", fields: [cashierUserId], references: [id])
+  branch         Branch    @relation(fields: [branchId], references: [id])
+  cashierUser    User      @relation("OrderCashier", fields: [cashierUserId], references: [id])
   soldByEmployee Employee? @relation("OrderSoldBy", fields: [soldByEmployeeId], references: [id])
-  customer      Customer? @relation(fields: [customerId], references: [id])
+  customer       Customer? @relation(fields: [customerId], references: [id])
 
-  items    OrderItem[]
-  payments Payment[]
-  returns  Return[]
+  items               OrderItem[]
+  payments            Payment[]
+  returns             Return[]
   whatsAppMessageLogs WhatsAppMessageLog[]
 
   @@index([branchId])
@@ -927,9 +929,10 @@ model ShopifyOrder {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  customer Customer?          @relation(fields: [customerId], references: [id])
-  items    ShopifyOrderItem[]
+  customer       Customer?             @relation(fields: [customerId], references: [id])
+  items          ShopifyOrderItem[]
   syncLogEntries ShopifySyncLogEntry[]
+  returns        ShopifyReturn[]
 
   @@index([shopifyUpdatedAt])
   @@index([customerId])
@@ -937,23 +940,66 @@ model ShopifyOrder {
 }
 
 model ShopifyOrderItem {
-  id             String  @id
-  shopifyOrderId String
-  sku            String?
-  title          String
-  quantity       Int
-  unitPrice      Decimal @db.Decimal(12, 2)
-  lineTotal      Decimal @db.Decimal(12, 2)
+  id               String  @id
+  shopifyOrderId   String
+  sku              String?
+  title            String
+  quantity         Int
+  unitPrice        Decimal @db.Decimal(12, 2)
+  lineTotal        Decimal @db.Decimal(12, 2)
   // Set only when sku matches ProductVariant.sku at sync time — nullable by
   // design so an order NEVER fails or gets skipped over an unmatched SKU.
   productVariantId String?
 
-  order          ShopifyOrder    @relation(fields: [shopifyOrderId], references: [id], onDelete: Cascade)
-  productVariant ProductVariant? @relation(fields: [productVariantId], references: [id])
+  order          ShopifyOrder        @relation(fields: [shopifyOrderId], references: [id], onDelete: Cascade)
+  productVariant ProductVariant?     @relation(fields: [productVariantId], references: [id])
+  returnItems    ShopifyReturnItem[]
 
   @@index([shopifyOrderId])
   @@index([productVariantId])
   @@map("shopify_order_items")
+}
+
+// Lightweight tracking log for a return of an ONLINE order processed at a
+// branch till — mirrors Return/ReturnItem's shape but deliberately has no
+// refundPaymentMethodId/refundAmount/restocked/status: the refund happens in
+// Shopify itself, online stock is Shopify-managed, and there is no GL
+// posting here (see ShopifyService.upsertShopifyOrder's own comment — the
+// original online sale was never booked into this system either). Purely a
+// record of "these items were returned at this branch, by this staff
+// member, for this reason" for tracking/visibility and to block the same
+// item being double-processed.
+model ShopifyReturn {
+  id                String   @id
+  shopifyOrderId    String
+  branchId          String
+  processedByUserId String
+  reason            String?
+  createdAt         DateTime @default(now())
+
+  shopifyOrder    ShopifyOrder @relation(fields: [shopifyOrderId], references: [id])
+  branch          Branch       @relation(fields: [branchId], references: [id])
+  processedByUser User         @relation("ShopifyReturnProcessedBy", fields: [processedByUserId], references: [id])
+
+  items ShopifyReturnItem[]
+
+  @@index([shopifyOrderId])
+  @@index([branchId])
+  @@map("shopify_returns")
+}
+
+model ShopifyReturnItem {
+  id                 String @id
+  shopifyReturnId    String
+  shopifyOrderItemId String
+  quantity           Int
+
+  shopifyReturn    ShopifyReturn    @relation(fields: [shopifyReturnId], references: [id])
+  shopifyOrderItem ShopifyOrderItem @relation(fields: [shopifyOrderItemId], references: [id])
+
+  @@index([shopifyReturnId])
+  @@index([shopifyOrderItemId])
+  @@map("shopify_return_items")
 }
 
 // An IN_PROGRESS row doubles as the overlap lock between the cron tick and a
@@ -987,8 +1033,8 @@ model ShopifySyncLogEntry {
   action         String // CREATED | UPDATED
   createdAt      DateTime @default(now())
 
-  syncLog     ShopifySyncLog @relation(fields: [syncLogId], references: [id], onDelete: Cascade)
-  shopifyOrder ShopifyOrder  @relation(fields: [shopifyOrderId], references: [id], onDelete: Cascade)
+  syncLog      ShopifySyncLog @relation(fields: [syncLogId], references: [id], onDelete: Cascade)
+  shopifyOrder ShopifyOrder   @relation(fields: [shopifyOrderId], references: [id], onDelete: Cascade)
 
   @@index([syncLogId])
   @@map("shopify_sync_log_entries")

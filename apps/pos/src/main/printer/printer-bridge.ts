@@ -164,6 +164,91 @@ export async function printReceipt(data: ReceiptData): Promise<PrintResult> {
   }
 }
 
+export interface ReturnSlipItem {
+  name: string;
+  sku: string;
+  quantity: number;
+}
+
+export interface ReturnSlipData {
+  branchName: string;
+  returnId: string;
+  shopifyOrderNumber: string;
+  cashierName: string;
+  createdAt: string;
+  customerName?: string;
+  items: ReturnSlipItem[];
+  reason?: string;
+}
+
+// The refund itself happens in Shopify, not at the till (see
+// shopify-returns-service.ts) -- this slip is the customer's only proof the
+// return was taken, and the only instruction for how to actually get their
+// money back, so that WhatsApp line is load-bearing, not decoration.
+export async function printReturnSlip(data: ReturnSlipData): Promise<PrintResult> {
+  try {
+    const { printer, target } = await buildPrinter();
+
+    printer.alignCenter();
+    printer.bold(true);
+    printer.setTextDoubleHeight();
+    printer.println(data.branchName || "Qassemiya");
+    printer.setTextNormal();
+    printer.bold(false);
+    printer.println("ONLINE ORDER RETURN");
+    printer.println(new Date(data.createdAt).toLocaleString());
+    printer.println(`Online order: ${data.shopifyOrderNumber}`);
+    printer.println(`Cashier: ${data.cashierName}`);
+    if (data.customerName) printer.println(`Customer: ${data.customerName}`);
+    printer.drawLine();
+
+    printer.alignLeft();
+    for (const item of data.items) {
+      printer.println(`${item.name} (${item.sku})`);
+      printer.println(`  Qty returned: ${item.quantity}`);
+    }
+    printer.drawLine();
+
+    if (data.reason) {
+      printer.println(`Reason: ${data.reason}`);
+      printer.drawLine();
+    }
+
+    try {
+      const png = await bwipjs.toBuffer({
+        bcid: "code128",
+        text: data.returnId,
+        scale: 2,
+        height: 10,
+        includetext: true,
+        textxalign: "center",
+      });
+      printer.alignCenter();
+      const printImageBuffer = (printer as unknown as { printImageBuffer?: (buf: Buffer) => void })
+        .printImageBuffer;
+      if (typeof printImageBuffer === "function") {
+        printImageBuffer.call(printer, png);
+      }
+    } catch (barcodeErr) {
+      // eslint-disable-next-line no-console
+      console.warn("[printer] return slip barcode render failed", barcodeErr);
+    }
+
+    printer.newLine();
+    printer.alignCenter();
+    printer.bold(true);
+    printer.println("Please share this slip via WhatsApp");
+    printer.println("at 920031956 to receive your refund.");
+    printer.bold(false);
+    printer.cut();
+
+    await printer.execute();
+    return { ok: true, target };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 export async function openCashDrawer(): Promise<PrintResult> {
   try {
     const { printer, target } = await buildPrinter();

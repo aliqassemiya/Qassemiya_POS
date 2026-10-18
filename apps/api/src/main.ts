@@ -2,11 +2,23 @@ import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./app.module";
 
+// Local dev always works without any config; CORS_ORIGINS (comma-separated,
+// exact origins e.g. "https://dev.shalkyqq.com,https://shalkyqq.com") adds
+// whatever the deployed dashboard is actually served from.
+function resolveAllowedOrigins(): (string | RegExp)[] {
+  const localhost = [/^http:\/\/localhost:\d+$/, /^http:\/\/127\.0\.0\.1:\d+$/];
+  const configured = (process.env.CORS_ORIGINS ?? "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  return [...localhost, ...configured];
+}
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   app.enableCors({
-    origin: [/^http:\/\/localhost:\d+$/, /^http:\/\/127\.0\.0\.1:\d+$/],
+    origin: resolveAllowedOrigins(),
     credentials: true,
   });
 

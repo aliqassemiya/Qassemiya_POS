@@ -3,6 +3,7 @@ export * from "./auth";
 export * from "./catalog";
 export * from "./inventory";
 export * from "./sales";
+export * from "./shopify-returns";
 export * from "./sync";
 export * from "./purchasing";
 export * from "./accounting";

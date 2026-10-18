@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../../common/prisma/prisma.service";
-import { startOfDayRiyadh, endOfDayRiyadh } from "../../common/utils/date-range";
+import { startOfDayRiyadh, endOfDayRiyadh, RIYADH_OFFSET_MS } from "../../common/utils/date-range";
 import type {
   BalanceSheetQueryDto,
   CashFlowQueryDto,
@@ -31,15 +31,36 @@ function dateRangeWhere(from?: string, to?: string) {
   return { entryDate: { ...(from ? { gte: startOfDayRiyadh(from) } : {}), ...(to ? { lte: endOfDayRiyadh(to) } : {}) } };
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 // Shared by salesTrend and onlineSalesTrend — both the bucket keys AND the
-// enumerated-days keys MUST use this same day-derivation method. Mixing
-// `toISOString().slice(0, 10)` (UTC) with `setHours(0, 0, 0, 0)`
-// (server-local time) shifts the enumerated days a full calendar day behind
-// the order buckets for any server timezone ahead of UTC (e.g. Asia/Riyadh,
-// UTC+3) — every lookup then misses and the chart shows zero sales even
-// when orders exist.
-function dayKey(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+// enumerated-days keys MUST use this same day-derivation method, and it
+// must be timezone-independent (never `getFullYear()`/`getDate()`, which
+// follow the server PROCESS's own local timezone — UTC on the live Docker
+// container, but whatever the developer's machine is set to locally). This
+// business operates in Riyadh time (UTC+3, no DST), so a day boundary is
+// computed by shifting the instant by RIYADH_OFFSET_MS and then reading the
+// UTC getters — same fixed-offset technique as startOfDayRiyadh/
+// endOfDayRiyadh in date-range.ts. Getting this wrong previously caused
+// any order placed 00:00–02:59 Riyadh time (21:00–23:59 UTC the day
+// before) to be bucketed into the WRONG day on a UTC server — exactly the
+// kind of day-level mismatch against Shopify's own (Riyadh-time) admin
+// reports that was reported.
+function dayKeyRiyadh(d: Date): string {
+  const shifted = new Date(d.getTime() + RIYADH_OFFSET_MS);
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}-${String(shifted.getUTCDate()).padStart(2, "0")}`;
+}
+
+// Enumerates each Riyadh calendar day in [from, to] by stepping in exact
+// 24h increments from `from` (always true since Saudi Arabia has no DST) —
+// never via local Date setters, which would reintroduce the same
+// server-timezone dependence dayKeyRiyadh exists to avoid.
+function enumerateDaysRiyadh(from: Date, to: Date): string[] {
+  const keys: string[] = [];
+  for (let t = from.getTime(); t <= to.getTime(); t += DAY_MS) {
+    keys.push(dayKeyRiyadh(new Date(t)));
+  }
+  return keys;
 }
 
 @Injectable()
@@ -110,24 +131,17 @@ export class ReportsService {
 
     const buckets = new Map<string, { total: number; orderCount: number }>();
     for (const order of orders) {
-      const day = dayKey(order.createdAt);
+      const day = dayKeyRiyadh(order.createdAt);
       const bucket = buckets.get(day) ?? { total: 0, orderCount: 0 };
       bucket.total += Number(order.total);
       bucket.orderCount += 1;
       buckets.set(day, bucket);
     }
 
-    const days: Array<{ date: string; total: number; orderCount: number }> = [];
-    const cursor = new Date(from);
-    cursor.setHours(0, 0, 0, 0);
-    const endDay = new Date(to);
-    endDay.setHours(0, 0, 0, 0);
-    while (cursor <= endDay) {
-      const key = dayKey(cursor);
+    const days = enumerateDaysRiyadh(from, to).map((key) => {
       const bucket = buckets.get(key) ?? { total: 0, orderCount: 0 };
-      days.push({ date: key, total: bucket.total, orderCount: bucket.orderCount });
-      cursor.setDate(cursor.getDate() + 1);
-    }
+      return { date: key, total: bucket.total, orderCount: bucket.orderCount };
+    });
 
     return { from: from.toISOString(), to: to.toISOString(), days };
   }
@@ -154,24 +168,17 @@ export class ReportsService {
 
     const buckets = new Map<string, { total: number; orderCount: number }>();
     for (const order of orders) {
-      const day = dayKey(order.shopifyCreatedAt);
+      const day = dayKeyRiyadh(order.shopifyCreatedAt);
       const bucket = buckets.get(day) ?? { total: 0, orderCount: 0 };
       bucket.total += Number(order.currentTotalPrice);
       bucket.orderCount += 1;
       buckets.set(day, bucket);
     }
 
-    const days: Array<{ date: string; total: number; orderCount: number }> = [];
-    const cursor = new Date(from);
-    cursor.setHours(0, 0, 0, 0);
-    const endDay = new Date(to);
-    endDay.setHours(0, 0, 0, 0);
-    while (cursor <= endDay) {
-      const key = dayKey(cursor);
+    const days = enumerateDaysRiyadh(from, to).map((key) => {
       const bucket = buckets.get(key) ?? { total: 0, orderCount: 0 };
-      days.push({ date: key, total: bucket.total, orderCount: bucket.orderCount });
-      cursor.setDate(cursor.getDate() + 1);
-    }
+      return { date: key, total: bucket.total, orderCount: bucket.orderCount };
+    });
 
     return { from: from.toISOString(), to: to.toISOString(), days };
   }

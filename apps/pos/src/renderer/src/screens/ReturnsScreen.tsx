@@ -21,6 +21,34 @@ interface ServerOrderSummary {
   total: number;
 }
 
+interface LocalShopifyOrderSummary {
+  id: string;
+  orderNumber: string;
+  shopifyCreatedAt: string;
+  currentTotalPrice: number;
+  currency: string;
+  customerName: string | null;
+}
+
+interface LocalShopifyOrderItemRow {
+  id: string;
+  sku: string | null;
+  title: string;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+  alreadyReturned: number;
+}
+
+interface LocalShopifyOrderWithItems {
+  id: string;
+  orderNumber: string;
+  shopifyCreatedAt: string;
+  customerName: string | null;
+  customerPhone: string | null;
+  items: LocalShopifyOrderItemRow[];
+}
+
 interface OrderItemRow {
   id: string;
   productVariantId: string;
@@ -60,6 +88,15 @@ export function ReturnsScreen() {
   const [serverQuery, setServerQuery] = useState("");
   const [serverResults, setServerResults] = useState<ServerOrderSummary[]>([]);
   const [searchingServer, setSearchingServer] = useState(false);
+
+  const [mode, setMode] = useState<"IN_STORE" | "ONLINE">("IN_STORE");
+  const [onlineQuery, setOnlineQuery] = useState("");
+  const [onlineResults, setOnlineResults] = useState<LocalShopifyOrderSummary[]>([]);
+  const [searchingOnline, setSearchingOnline] = useState(false);
+  const [selectedShopifyOrder, setSelectedShopifyOrder] = useState<LocalShopifyOrderWithItems | null>(null);
+  const [onlineReturnQty, setOnlineReturnQty] = useState<Record<string, number>>({});
+  const [onlineReason, setOnlineReason] = useState("");
+  const [processingOnline, setProcessingOnline] = useState(false);
 
   useEffect(() => {
     if (pairing?.branchId) {
@@ -175,57 +212,185 @@ export function ReturnsScreen() {
     }
   }
 
+  async function searchOnline() {
+    if (!onlineQuery.trim()) return;
+    setSearchingOnline(true);
+    try {
+      const results = await window.api.sales.searchLocalShopifyOrders(onlineQuery.trim());
+      setOnlineResults(results);
+      if (results.length === 0) push("error", t("returns.noOnlineResults"));
+    } finally {
+      setSearchingOnline(false);
+    }
+  }
+
+  async function selectShopifyOrder(id: string) {
+    const data = await window.api.sales.getShopifyOrder(id);
+    if (data) {
+      setSelectedShopifyOrder(data);
+      setOnlineReturnQty({});
+    } else {
+      setSelectedShopifyOrder(null);
+      push("error", t("returns.errorOrderNotFound"));
+    }
+  }
+
+  function maxOnlineReturnable(item: LocalShopifyOrderItemRow): number {
+    return Math.max(item.quantity - item.alreadyReturned, 0);
+  }
+
+  async function processOnlineReturn() {
+    if (!selectedShopifyOrder || !pairing?.branchId || !session?.userId) return;
+    const linesToReturn = selectedShopifyOrder.items
+      .filter((i) => (onlineReturnQty[i.id] ?? 0) > 0)
+      .map((i) => ({
+        shopifyOrderItemId: i.id,
+        name: i.title,
+        sku: i.sku ?? "",
+        quantity: Math.min(onlineReturnQty[i.id] ?? 0, maxOnlineReturnable(i)),
+      }))
+      .filter((l) => l.quantity > 0);
+
+    if (linesToReturn.length === 0) {
+      push("error", t("returns.errorSelectItem"));
+      return;
+    }
+
+    setProcessingOnline(true);
+    try {
+      await window.api.sales.createShopifyReturn({
+        shopifyOrderId: selectedShopifyOrder.id,
+        shopifyOrderNumber: selectedShopifyOrder.orderNumber,
+        customerName: selectedShopifyOrder.customerName ?? undefined,
+        branchId: pairing.branchId,
+        processedByUserId: session.userId,
+        reason: onlineReason || undefined,
+        items: linesToReturn,
+      });
+      push("success", t("returns.toastShopifyReturnProcessed"));
+      setSelectedShopifyOrder(null);
+      setOnlineReturnQty({});
+      setOnlineReason("");
+      setOnlineResults([]);
+      setOnlineQuery("");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      push("error", t("returns.errorShopifyReturnFailed", { message }));
+    } finally {
+      setProcessingOnline(false);
+    }
+  }
+
   return (
     <div className="till-layout">
       <div className="panel">
-        <h3 style={{ marginTop: 0 }}>{t("returns.searchAnyBranch")}</h3>
-        <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
-          <input
-            className="field"
-            style={{ flex: 1, padding: 8 }}
-            placeholder={t("returns.searchAnyBranchPlaceholder")}
-            value={serverQuery}
-            onChange={(e) => setServerQuery(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && void searchServer()}
-          />
-          <button className="btn" onClick={() => void searchServer()} disabled={searchingServer}>
-            {searchingServer ? t("returns.searching") : t("returns.search")}
+        <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
+          <button
+            className={`btn ${mode === "IN_STORE" ? "primary" : ""}`}
+            style={{ flex: 1 }}
+            onClick={() => setMode("IN_STORE")}
+          >
+            {t("returns.toggleInStore")}
+          </button>
+          <button
+            className={`btn ${mode === "ONLINE" ? "primary" : ""}`}
+            style={{ flex: 1 }}
+            onClick={() => setMode("ONLINE")}
+          >
+            {t("returns.toggleOnline")}
           </button>
         </div>
-        {serverResults.length > 0 && (
-          <div className="order-list" style={{ maxHeight: 240, flexShrink: 0, marginBottom: 16 }}>
-            {serverResults.map((o) => (
-              <div key={o.id} className={`order-row ${selectedOrderId === o.id ? "selected" : ""}`} onClick={() => selectOrder(o.id)}>
-                <div>
-                  <div>#{o.orderNumber ?? o.id.slice(0, 8)}</div>
-                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                    {o.branchName} · {formatDateTime(o.createdAt)}
+
+        {mode === "IN_STORE" && (
+          <>
+            <h3 style={{ marginTop: 0 }}>{t("returns.searchAnyBranch")}</h3>
+            <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+              <input
+                className="field"
+                style={{ flex: 1, padding: 8 }}
+                placeholder={t("returns.searchAnyBranchPlaceholder")}
+                value={serverQuery}
+                onChange={(e) => setServerQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && void searchServer()}
+              />
+              <button className="btn" onClick={() => void searchServer()} disabled={searchingServer}>
+                {searchingServer ? t("returns.searching") : t("returns.search")}
+              </button>
+            </div>
+            {serverResults.length > 0 && (
+              <div className="order-list" style={{ maxHeight: 240, flexShrink: 0, marginBottom: 16 }}>
+                {serverResults.map((o) => (
+                  <div key={o.id} className={`order-row ${selectedOrderId === o.id ? "selected" : ""}`} onClick={() => selectOrder(o.id)}>
+                    <div>
+                      <div>#{o.orderNumber ?? o.id.slice(0, 8)}</div>
+                      <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                        {o.branchName} · {formatDateTime(o.createdAt)}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "end" }}>{money(o.total)}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <h3 style={{ marginTop: 0 }}>{t("returns.recentOrders")}</h3>
+            <div className="order-list" style={{ flex: 1, minHeight: 0 }}>
+              {orders.map((o) => (
+                <div key={o.id} className={`order-row ${selectedOrderId === o.id ? "selected" : ""}`} onClick={() => selectOrder(o.id)}>
+                  <div>
+                    <div>#{o.orderNumber ?? o.id.slice(0, 8)}</div>
+                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{formatDateTime(o.createdAt)}</div>
+                  </div>
+                  <div style={{ textAlign: "end" }}>
+                    <div>{money(o.total)}</div>
+                    <span className={`badge ${o.syncedAt ? "synced" : "pending"}`}>{o.syncedAt ? t("returns.synced") : t("returns.pending")}</span>
                   </div>
                 </div>
-                <div style={{ textAlign: "end" }}>{money(o.total)}</div>
-              </div>
-            ))}
-          </div>
+              ))}
+              {orders.length === 0 && <div style={{ padding: 16, color: "var(--text-muted)" }}>{t("returns.noOrders")}</div>}
+            </div>
+          </>
         )}
 
-        <h3 style={{ marginTop: 0 }}>{t("returns.recentOrders")}</h3>
-        <div className="order-list" style={{ flex: 1, minHeight: 0 }}>
-          {orders.map((o) => (
-            <div key={o.id} className={`order-row ${selectedOrderId === o.id ? "selected" : ""}`} onClick={() => selectOrder(o.id)}>
-              <div>
-                <div>#{o.orderNumber ?? o.id.slice(0, 8)}</div>
-                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{formatDateTime(o.createdAt)}</div>
-              </div>
-              <div style={{ textAlign: "end" }}>
-                <div>{money(o.total)}</div>
-                <span className={`badge ${o.syncedAt ? "synced" : "pending"}`}>{o.syncedAt ? t("returns.synced") : t("returns.pending")}</span>
-              </div>
+        {mode === "ONLINE" && (
+          <>
+            <h3 style={{ marginTop: 0 }}>{t("returns.toggleOnline")}</h3>
+            <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: -6 }}>{t("returns.onlineOrderSearchHint")}</p>
+            <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+              <input
+                className="field"
+                style={{ flex: 1, padding: 8 }}
+                placeholder={t("returns.onlineOrderSearchPlaceholder")}
+                value={onlineQuery}
+                onChange={(e) => setOnlineQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && void searchOnline()}
+              />
+              <button className="btn" onClick={() => void searchOnline()} disabled={searchingOnline}>
+                {searchingOnline ? t("returns.searching") : t("returns.search")}
+              </button>
             </div>
-          ))}
-          {orders.length === 0 && <div style={{ padding: 16, color: "var(--text-muted)" }}>{t("returns.noOrders")}</div>}
-        </div>
+            <div className="order-list" style={{ flex: 1, minHeight: 0 }}>
+              {onlineResults.map((o) => (
+                <div
+                  key={o.id}
+                  className={`order-row ${selectedShopifyOrder?.id === o.id ? "selected" : ""}`}
+                  onClick={() => selectShopifyOrder(o.id)}
+                >
+                  <div>
+                    <div>#{o.orderNumber}</div>
+                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                      {o.customerName ?? t("returns.walkInCustomer")} · {formatDateTime(o.shopifyCreatedAt)}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "end" }}>{money(o.currentTotalPrice)}</div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
+      {mode === "IN_STORE" && (
       <div className="panel">
         <h3 style={{ marginTop: 0 }}>{t("returns.processReturn")}</h3>
         {!selectedOrderId && <p style={{ color: "var(--text-muted)" }}>{t("returns.selectOrderHint")}</p>}
@@ -311,6 +476,72 @@ export function ReturnsScreen() {
           </>
         )}
       </div>
+      )}
+
+      {mode === "ONLINE" && (
+      <div className="panel">
+        <h3 style={{ marginTop: 0 }}>{t("returns.processOnlineReturn")}</h3>
+        {!selectedShopifyOrder && <p style={{ color: "var(--text-muted)" }}>{t("returns.selectOnlineOrderHint")}</p>}
+        {selectedShopifyOrder && (
+          <>
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontWeight: 600 }}>
+                {t("returns.onlineOrderLabel")} #{selectedShopifyOrder.orderNumber}
+              </div>
+              <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+                {selectedShopifyOrder.customerName
+                  ? `${selectedShopifyOrder.customerName}${selectedShopifyOrder.customerPhone ? ` · ${selectedShopifyOrder.customerPhone}` : ""}`
+                  : t("returns.walkInCustomer")}
+              </div>
+            </div>
+            <table className="cart-table">
+              <thead>
+                <tr>
+                  <th>{t("returns.tableItem")}</th>
+                  <th>{t("returns.tableSold")}</th>
+                  <th>{t("returns.tableAlreadyReturned")}</th>
+                  <th>{t("returns.tableReturnQty")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {selectedShopifyOrder.items.map((i) => (
+                  <tr key={i.id}>
+                    <td>
+                      {i.title}
+                      {i.sku && <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{i.sku}</div>}
+                    </td>
+                    <td>{i.quantity}</td>
+                    <td>{i.alreadyReturned}</td>
+                    <td>
+                      <input
+                        className="qty-input"
+                        type="number"
+                        min={0}
+                        max={maxOnlineReturnable(i)}
+                        value={onlineReturnQty[i.id] ?? 0}
+                        onChange={(e) =>
+                          setOnlineReturnQty({
+                            ...onlineReturnQty,
+                            [i.id]: Math.min(Number(e.target.value) || 0, maxOnlineReturnable(i)),
+                          })
+                        }
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="field" style={{ marginTop: 12 }}>
+              <label>{t("returns.reasonLabel")}</label>
+              <input value={onlineReason} onChange={(e) => setOnlineReason(e.target.value)} />
+            </div>
+            <button className="btn primary block" onClick={processOnlineReturn} disabled={processingOnline}>
+              {processingOnline ? t("returns.processing") : t("returns.processOnlineReturn")}
+            </button>
+          </>
+        )}
+      </div>
+      )}
     </div>
   );
 }

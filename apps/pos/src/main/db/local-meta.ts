@@ -14,6 +14,7 @@ export const LocalMetaKey = {
   CURRENT_EMPLOYEE_NAME: "currentEmployeeName",
   CURRENT_USER_ID: "currentUserId",
   LAST_CATALOG_SYNC_AT: "lastCatalogSyncAt",
+  LAST_SHOPIFY_CATALOG_SYNC_AT: "lastShopifyCatalogSyncAt",
   PRINTER_TARGET: "printerTarget",
   DEVICE_PAIRED: "devicePaired",
   LANGUAGE: "language",

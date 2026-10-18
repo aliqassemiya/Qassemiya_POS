@@ -2,6 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../../common/prisma/prisma.service";
 import { SalesService } from "../sales/sales.service";
 import { ReturnsService } from "../returns/returns.service";
+import { ShopifyReturnsService } from "../shopify-returns/shopify-returns.service";
 import type { SyncBundle, SyncCatalogQuery, SyncPushRequest, SyncPushResponse, SyncPushResult } from "@qassemiya/shared-types";
 
 @Injectable()
@@ -12,6 +13,7 @@ export class SyncService {
     private readonly prisma: PrismaService,
     private readonly salesService: SalesService,
     private readonly returnsService: ReturnsService,
+    private readonly shopifyReturnsService: ShopifyReturnsService,
   ) {}
 
   /**
@@ -44,11 +46,19 @@ export class SyncService {
         return { id, status: "ACCEPTED", serverTimestamp, orderNumber };
       }
 
-      // kind === "RETURN"
-      const existing = await this.prisma.return.findUnique({ where: { id } });
+      if (bundle.kind === "RETURN") {
+        const existing = await this.prisma.return.findUnique({ where: { id } });
+        if (existing) return { id, status: "ALREADY_EXISTS", serverTimestamp };
+
+        await this.returnsService.createReturnTx(bundle.payload);
+        return { id, status: "ACCEPTED", serverTimestamp };
+      }
+
+      // kind === "SHOPIFY_RETURN"
+      const existing = await this.prisma.shopifyReturn.findUnique({ where: { id } });
       if (existing) return { id, status: "ALREADY_EXISTS", serverTimestamp };
 
-      await this.returnsService.createReturnTx(bundle.payload);
+      await this.shopifyReturnsService.createShopifyReturnTx(bundle.payload);
       return { id, status: "ACCEPTED", serverTimestamp };
     } catch (err) {
       // Unique constraint race (two pushes landed concurrently) also counts as already-applied.
@@ -73,8 +83,10 @@ export class SyncService {
   async catalog(query: SyncCatalogQuery) {
     const since = query.since ? new Date(query.since) : undefined;
     const updatedAt = since ? { gt: since } : undefined;
+    const shopifySince = query.shopifySince ? new Date(query.shopifySince) : undefined;
+    const shopifyUpdatedAt = shopifySince ? { gt: shopifySince } : undefined;
 
-    const [categories, products, inventory, paymentMethods, customers, employees] = await Promise.all([
+    const [categories, products, inventory, paymentMethods, customers, employees, shopifyOrders] = await Promise.all([
       this.prisma.category.findMany({ where: updatedAt ? { updatedAt } : undefined }),
       this.prisma.product.findMany({
         where: updatedAt ? { OR: [{ updatedAt }, { variants: { some: { updatedAt } } }] } : undefined,
@@ -91,9 +103,28 @@ export class SyncService {
       this.prisma.employee.findMany({
         where: { branchId: query.branchId, isActive: true, ...(updatedAt ? { updatedAt } : {}) },
       }),
+      // NOT branch-filtered — any branch can receive a return for any online
+      // order, so every till caches the full set (incrementally, via `since`)
+      // for its local offline-capable search.
+      this.prisma.shopifyOrder.findMany({
+        where: shopifyUpdatedAt ? { updatedAt: shopifyUpdatedAt } : undefined,
+        include: { items: true },
+      }),
     ]);
 
     const variants = products.flatMap((p) => p.variants);
+    const shopifyOrderItems = shopifyOrders.flatMap((o) =>
+      o.items.map((i) => ({
+        id: i.id,
+        shopifyOrderId: i.shopifyOrderId,
+        sku: i.sku,
+        title: i.title,
+        quantity: i.quantity,
+        unitPrice: i.unitPrice,
+        lineTotal: i.lineTotal,
+        productVariantId: i.productVariantId,
+      })),
+    );
 
     return {
       serverTime: new Date().toISOString(),
@@ -111,6 +142,19 @@ export class SyncService {
         branchId: e.branchId,
         updatedAt: e.updatedAt,
       })),
+      // Flat/minimal shape for the till's offline search cache — never ships
+      // rawPayload or any of the accounting-comparison-only fields.
+      shopifyOrders: shopifyOrders.map((o) => ({
+        id: o.id,
+        orderNumber: o.orderNumber,
+        shopifyCreatedAt: o.shopifyCreatedAt,
+        currentTotalPrice: o.currentTotalPrice,
+        currency: o.currency,
+        customerName: o.customerName,
+        customerPhone: o.customerPhone,
+        updatedAt: o.updatedAt,
+      })),
+      shopifyOrderItems,
     };
   }
 

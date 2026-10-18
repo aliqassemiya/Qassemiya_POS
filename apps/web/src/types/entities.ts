@@ -189,6 +189,27 @@ export interface ReturnItemRecord {
   restocked: boolean;
 }
 
+// No refundAmount/restocked/status -- unlike Return above, an online-order
+// return never touches inventory or the GL (the refund happens in Shopify).
+export interface ShopifyReturn {
+  id: string;
+  shopifyOrderId: string;
+  branchId: string;
+  processedByUserId: string;
+  reason?: string | null;
+  createdAt: string;
+  items: ShopifyReturnItemRecord[];
+  shopifyOrder?: { orderNumber: string } | null;
+}
+
+export interface ShopifyReturnItemRecord {
+  id: string;
+  shopifyReturnId: string;
+  shopifyOrderItemId: string;
+  quantity: number;
+  shopifyOrderItem?: { title: string; sku: string | null; quantity: number } | null;
+}
+
 export interface Customer {
   id: string;
   fullName: string;

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import { IpcChannels, type AppLanguage, type CheckoutRequest, type CreateCustomerRequest, type CreateReturnRequest, type PairDeviceRequest, type PinLoginRequest, type SyncStatusPayload, type TamaraCreateSessionRequest, type TabbyCreateSessionRequest } from "../shared/ipc";
+import { IpcChannels, type AppLanguage, type CheckoutRequest, type CreateCustomerRequest, type CreateReturnRequest, type CreateShopifyReturnRequest, type PairDeviceRequest, type PinLoginRequest, type SyncStatusPayload, type TamaraCreateSessionRequest, type TabbyCreateSessionRequest } from "../shared/ipc";
 
 /**
  * Narrow, explicit bridge — the renderer only ever sees these named methods,
@@ -36,6 +36,9 @@ const api = {
     searchServerOrders: (query: string) => ipcRenderer.invoke(IpcChannels.SEARCH_SERVER_ORDERS, query),
     getOrder: (orderId: string) => ipcRenderer.invoke(IpcChannels.GET_ORDER, orderId),
     createReturn: (req: CreateReturnRequest) => ipcRenderer.invoke(IpcChannels.CREATE_RETURN, req),
+    searchLocalShopifyOrders: (query: string) => ipcRenderer.invoke(IpcChannels.SEARCH_LOCAL_SHOPIFY_ORDERS, query),
+    getShopifyOrder: (id: string) => ipcRenderer.invoke(IpcChannels.GET_SHOPIFY_ORDER, id),
+    createShopifyReturn: (req: CreateShopifyReturnRequest) => ipcRenderer.invoke(IpcChannels.CREATE_SHOPIFY_RETURN, req),
   },
   printer: {
     printReceipt: (receipt: unknown) => ipcRenderer.invoke(IpcChannels.PRINT_RECEIPT, receipt),

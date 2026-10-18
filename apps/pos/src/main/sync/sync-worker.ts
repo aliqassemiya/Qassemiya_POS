@@ -3,7 +3,7 @@ import { getDb } from "../db";
 import { getMeta, setMeta, LocalMetaKey } from "../db/local-meta";
 import { getApiClient, primeApiUrlCache, getCachedApiUrl } from "../api-client";
 import { ConnectivityMonitor } from "./connectivity";
-import { buildSaleBundle, buildReturnBundle } from "./build-bundle";
+import { buildSaleBundle, buildReturnBundle, buildShopifyReturnBundle } from "./build-bundle";
 import { backfillOrderNumbers } from "../services/sales-service";
 import type { SyncCatalogResponse } from "./catalog-types";
 
@@ -13,7 +13,7 @@ const MAX_BUNDLES_PER_PUSH = 50;
 const MAX_BACKOFF_MS = 5 * 60_000;
 
 interface PendingRef {
-  kind: "SALE" | "RETURN";
+  kind: "SALE" | "RETURN" | "SHOPIFY_RETURN";
   id: string;
 }
 
@@ -92,7 +92,7 @@ export class SyncWorker {
 
   async getUnsyncedCount(): Promise<number> {
     const db = getDb();
-    const [{ orders }, { returns }] = await Promise.all([
+    const [{ orders }, { returns }, { shopifyReturns }] = await Promise.all([
       db
         .selectFrom("order")
         .select((eb) => eb.fn.countAll<number>().as("orders"))
@@ -103,8 +103,13 @@ export class SyncWorker {
         .select((eb) => eb.fn.countAll<number>().as("returns"))
         .where("syncedAt", "is", null)
         .executeTakeFirstOrThrow(),
+      db
+        .selectFrom("shopifyReturn")
+        .select((eb) => eb.fn.countAll<number>().as("shopifyReturns"))
+        .where("syncedAt", "is", null)
+        .executeTakeFirstOrThrow(),
     ]);
-    return Number(orders) + Number(returns);
+    return Number(orders) + Number(returns) + Number(shopifyReturns);
   }
 
   async getStatus(): Promise<SyncStatus> {
@@ -170,10 +175,17 @@ export class SyncWorker {
         .where("syncedAt", "is", null)
         .orderBy("createdAt", "asc")
         .execute();
+      const unsyncedShopifyReturns = await db
+        .selectFrom("shopifyReturn")
+        .select(["id"])
+        .where("syncedAt", "is", null)
+        .orderBy("createdAt", "asc")
+        .execute();
 
       const refs: PendingRef[] = [
         ...unsyncedOrders.map((o) => ({ kind: "SALE" as const, id: o.id })),
         ...unsyncedReturns.map((r) => ({ kind: "RETURN" as const, id: r.id })),
+        ...unsyncedShopifyReturns.map((r) => ({ kind: "SHOPIFY_RETURN" as const, id: r.id })),
       ].filter((ref) => {
         const nextAt = this.nextAttemptAt.get(`${ref.kind}:${ref.id}`);
         return !nextAt || nextAt <= now;
@@ -187,7 +199,9 @@ export class SyncWorker {
       const batch = refs.slice(0, MAX_BUNDLES_PER_PUSH);
       const bundles = (
         await Promise.all(
-          batch.map((ref) => (ref.kind === "SALE" ? buildSaleBundle(ref.id) : buildReturnBundle(ref.id))),
+          batch.map((ref) =>
+            ref.kind === "SALE" ? buildSaleBundle(ref.id) : ref.kind === "RETURN" ? buildReturnBundle(ref.id) : buildShopifyReturnBundle(ref.id),
+          ),
         )
       ).filter((b): b is NonNullable<typeof b> => b !== null);
 
@@ -218,48 +232,72 @@ export class SyncWorker {
     if (status === "ACCEPTED" || status === "ALREADY_EXISTS") {
       this.nextAttemptAt.delete(`SALE:${id}`);
       this.nextAttemptAt.delete(`RETURN:${id}`);
+      this.nextAttemptAt.delete(`SHOPIFY_RETURN:${id}`);
       const orderUpdate = await db
         .updateTable("order")
         .set({ syncedAt: nowIso, lastSyncError: null, ...(orderNumber ? { orderNumber } : {}) })
         .where("id", "=", id)
         .where("syncedAt", "is", null)
         .executeTakeFirst();
-      if (Number(orderUpdate.numUpdatedRows) === 0) {
-        await db
-          .updateTable("return")
-          .set({ syncedAt: nowIso, lastSyncError: null })
-          .where("id", "=", id)
-          .where("syncedAt", "is", null)
-          .execute();
-      }
+      if (Number(orderUpdate.numUpdatedRows) > 0) return;
+
+      const returnUpdate = await db
+        .updateTable("return")
+        .set({ syncedAt: nowIso, lastSyncError: null })
+        .where("id", "=", id)
+        .where("syncedAt", "is", null)
+        .executeTakeFirst();
+      if (Number(returnUpdate.numUpdatedRows) > 0) return;
+
+      await db
+        .updateTable("shopifyReturn")
+        .set({ syncedAt: nowIso, lastSyncError: null })
+        .where("id", "=", id)
+        .where("syncedAt", "is", null)
+        .execute();
       return;
     }
 
     // ERROR: bump attempt count + schedule exponential backoff, never touch the local sale itself.
     const orderRow = await db.selectFrom("order").select(["syncAttempts"]).where("id", "=", id).executeTakeFirst();
-    const isOrder = Boolean(orderRow);
-    const attempts = (orderRow?.syncAttempts ?? 0) + 1;
-    const backoffMs = Math.min(POLL_INTERVAL_MS * 2 ** attempts, MAX_BACKOFF_MS);
-    this.nextAttemptAt.set(`${isOrder ? "SALE" : "RETURN"}:${id}`, Date.now() + backoffMs);
-
-    if (isOrder) {
+    if (orderRow) {
+      const attempts = orderRow.syncAttempts + 1;
+      const backoffMs = Math.min(POLL_INTERVAL_MS * 2 ** attempts, MAX_BACKOFF_MS);
+      this.nextAttemptAt.set(`SALE:${id}`, Date.now() + backoffMs);
       await db
         .updateTable("order")
         .set({ syncAttempts: attempts, lastSyncError: error ?? "sync error" })
         .where("id", "=", id)
         .execute();
-    } else {
-      const returnRow = await db
-        .selectFrom("return")
-        .select(["syncAttempts"])
-        .where("id", "=", id)
-        .executeTakeFirst();
+      return;
+    }
+
+    const returnRow = await db.selectFrom("return").select(["syncAttempts"]).where("id", "=", id).executeTakeFirst();
+    if (returnRow) {
+      const attempts = returnRow.syncAttempts + 1;
+      const backoffMs = Math.min(POLL_INTERVAL_MS * 2 ** attempts, MAX_BACKOFF_MS);
+      this.nextAttemptAt.set(`RETURN:${id}`, Date.now() + backoffMs);
       await db
         .updateTable("return")
-        .set({ syncAttempts: (returnRow?.syncAttempts ?? 0) + 1, lastSyncError: error ?? "sync error" })
+        .set({ syncAttempts: attempts, lastSyncError: error ?? "sync error" })
         .where("id", "=", id)
         .execute();
+      return;
     }
+
+    const shopifyReturnRow = await db
+      .selectFrom("shopifyReturn")
+      .select(["syncAttempts"])
+      .where("id", "=", id)
+      .executeTakeFirst();
+    const attempts = (shopifyReturnRow?.syncAttempts ?? 0) + 1;
+    const backoffMs = Math.min(POLL_INTERVAL_MS * 2 ** attempts, MAX_BACKOFF_MS);
+    this.nextAttemptAt.set(`SHOPIFY_RETURN:${id}`, Date.now() + backoffMs);
+    await db
+      .updateTable("shopifyReturn")
+      .set({ syncAttempts: attempts, lastSyncError: error ?? "sync error" })
+      .where("id", "=", id)
+      .execute();
   }
 
   async pullCatalog(): Promise<void> {
@@ -269,12 +307,15 @@ export class SyncWorker {
 
     try {
       const since = await getMeta(LocalMetaKey.LAST_CATALOG_SYNC_AT);
+      const shopifySince = await getMeta(LocalMetaKey.LAST_SHOPIFY_CATALOG_SYNC_AT);
       const client = getApiClient();
       const response = await client.get<SyncCatalogResponse>("/sync/catalog", {
-        params: { branchId, since: since ?? undefined },
+        params: { branchId, since: since ?? undefined, shopifySince: shopifySince ?? undefined },
       });
       await this.applyCatalog(response.data);
-      await setMeta(LocalMetaKey.LAST_CATALOG_SYNC_AT, response.data.serverTime ?? new Date().toISOString());
+      const serverTime = response.data.serverTime ?? new Date().toISOString();
+      await setMeta(LocalMetaKey.LAST_CATALOG_SYNC_AT, serverTime);
+      await setMeta(LocalMetaKey.LAST_SHOPIFY_CATALOG_SYNC_AT, serverTime);
     } catch (err) {
       this.lastError = err instanceof Error ? err.message : String(err);
     }
@@ -408,6 +449,58 @@ export class SyncWorker {
           .values({ id: e.id, employeeCode: e.employeeCode, fullName: e.fullName, branchId: e.branchId, updatedAt: e.updatedAt })
           .onConflict((oc) =>
             oc.column("id").doUpdateSet({ employeeCode: e.employeeCode, fullName: e.fullName, branchId: e.branchId, updatedAt: e.updatedAt }),
+          )
+          .execute();
+      }
+      for (const o of data.shopifyOrders ?? []) {
+        await trx
+          .insertInto("shopifyOrder")
+          .values({
+            id: o.id,
+            orderNumber: o.orderNumber,
+            shopifyCreatedAt: o.shopifyCreatedAt,
+            currentTotalPrice: o.currentTotalPrice,
+            currency: o.currency,
+            customerName: o.customerName ?? null,
+            customerPhone: o.customerPhone ?? null,
+            updatedAt: o.updatedAt,
+          })
+          .onConflict((oc) =>
+            oc.column("id").doUpdateSet({
+              orderNumber: o.orderNumber,
+              shopifyCreatedAt: o.shopifyCreatedAt,
+              currentTotalPrice: o.currentTotalPrice,
+              currency: o.currency,
+              customerName: o.customerName ?? null,
+              customerPhone: o.customerPhone ?? null,
+              updatedAt: o.updatedAt,
+            }),
+          )
+          .execute();
+      }
+      for (const i of data.shopifyOrderItems ?? []) {
+        await trx
+          .insertInto("shopifyOrderItem")
+          .values({
+            id: i.id,
+            shopifyOrderId: i.shopifyOrderId,
+            sku: i.sku ?? null,
+            title: i.title,
+            quantity: i.quantity,
+            unitPrice: i.unitPrice,
+            lineTotal: i.lineTotal,
+            productVariantId: i.productVariantId ?? null,
+          })
+          .onConflict((oc) =>
+            oc.column("id").doUpdateSet({
+              shopifyOrderId: i.shopifyOrderId,
+              sku: i.sku ?? null,
+              title: i.title,
+              quantity: i.quantity,
+              unitPrice: i.unitPrice,
+              lineTotal: i.lineTotal,
+              productVariantId: i.productVariantId ?? null,
+            }),
           )
           .execute();
       }
