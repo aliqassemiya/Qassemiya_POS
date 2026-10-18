@@ -49,17 +49,31 @@ jobs:
           host: ${{ env.EC2_HOST }}
           username: ${{ env.EC2_USER }}
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-          script_stop: true
           script: |
+            set -e
             ECR_URI="${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}"
             aws ecr get-login-password --region ${{ env.AWS_REGION }} | sudo docker login --username AWS --password-stdin "$ECR_URI"
             sudo docker pull "${ECR_URI}:latest"
             sudo docker stop qassemiya-api
             sudo docker rm qassemiya-api
             sudo docker run -d --name qassemiya-api --restart unless-stopped --env-file /root/api.env -p 127.0.0.1:3000:3000 "${ECR_URI}:latest"
-            sleep 8
             sudo docker ps --filter name=qassemiya-api
-            curl -sf http://127.0.0.1:3000/health
+            # Boot includes `prisma migrate deploy` + Nest startup, which can
+            # take well over the fixed 8s this used to wait -- a fresh
+            # container pull with no cached layers (every CI build gets new
+            # layer hashes vs. a local build) made that gap obvious: the
+            # container was healthy seconds later, but the fixed-sleep check
+            # had already failed the step. Poll instead of guessing a delay.
+            for i in $(seq 1 30); do
+              if curl -sf http://127.0.0.1:3000/health; then
+                echo "API is healthy"
+                exit 0
+              fi
+              sleep 2
+            done
+            echo "API did not become healthy in time"
+            sudo docker logs qassemiya-api --tail 50
+            exit 1
 
   deploy-web:
     runs-on: ubuntu-latest
@@ -98,8 +112,8 @@ jobs:
           host: ${{ env.EC2_HOST }}
           username: ${{ env.EC2_USER }}
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-          script_stop: true
           script: |
+            set -e
             sudo rm -rf /var/www/dashboard/*
             sudo cp -r /tmp/dashboard-deploy/* /var/www/dashboard/
             rm -rf /tmp/dashboard-deploy
